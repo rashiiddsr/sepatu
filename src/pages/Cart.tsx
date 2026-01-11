@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { CartItemWithProduct } from '../types/database';
 import { Trash2, Plus, Minus, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useShop } from '../contexts/ShopContext';
 import { api } from '../lib/api';
 
 export default function Cart() {
   const { user } = useAuth();
+  const { refreshCounts } = useShop();
   const navigate = useNavigate();
   const [cartItems, setCartItems] = useState<CartItemWithProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +25,7 @@ export default function Cart() {
     try {
       const data = await api.getCartItems();
       setCartItems(data);
+      await refreshCounts();
     } finally {
       setLoading(false);
     }

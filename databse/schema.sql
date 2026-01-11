@@ -124,6 +124,14 @@ CREATE TABLE IF NOT EXISTS order_items (
   CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+INSERT IGNORE INTO users (id, email, password_hash) VALUES
+  ('s1111111-1111-1111-1111-111111111111', 'superadmin@gmail.com', 'superadmin'),
+  ('a1111111-1111-1111-1111-111111111111', 'admin@solemates.local', 'admin123');
+
+INSERT IGNORE INTO profiles (id, full_name, role) VALUES
+  ('s1111111-1111-1111-1111-111111111111', 'Superadmin', 'super_admin'),
+  ('a1111111-1111-1111-1111-111111111111', 'Admin Solemates', 'admin');
+
 INSERT INTO brands (id, name, description) VALUES
   ('11111111-1111-1111-1111-111111111111', 'Nike', 'Performance and lifestyle sneakers.'),
   ('22222222-2222-2222-2222-222222222222', 'Adidas', 'Classic and modern footwear.'),

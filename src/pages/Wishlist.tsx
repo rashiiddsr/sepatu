@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { WishlistItemWithProduct } from '../types/database';
 import { Heart, ShoppingCart, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useShop } from '../contexts/ShopContext';
 import { api } from '../lib/api';
 
 export default function Wishlist() {
   const { user } = useAuth();
+  const { refreshCounts } = useShop();
   const navigate = useNavigate();
   const [wishlistItems, setWishlistItems] = useState<WishlistItemWithProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +25,7 @@ export default function Wishlist() {
     try {
       const data = await api.getWishlist();
       setWishlistItems(data);
+      await refreshCounts();
     } finally {
       setLoading(false);
     }
@@ -67,7 +70,7 @@ export default function Wishlist() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {wishlistItems.map((item) => (
             <div key={item.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <Link to={`/product/${item.product_id}`}>
+              <Link to={`/products/${item.product_id}`}>
                 <img
                   src={item.products?.image_url || 'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=400'}
                   alt={item.products?.name}
@@ -83,7 +86,7 @@ export default function Wishlist() {
                 </p>
                 <div className="flex space-x-3">
                   <Link
-                    to={`/product/${item.product_id}`}
+                    to={`/products/${item.product_id}`}
                     className="flex-1 bg-slate-900 text-white py-2 rounded-lg font-medium hover:bg-slate-800 transition flex items-center justify-center space-x-2"
                   >
                     <ShoppingCart className="w-4 h-4" />
