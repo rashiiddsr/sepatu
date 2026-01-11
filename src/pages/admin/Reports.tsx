@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
 import { TrendingUp, DollarSign, Package, Users } from 'lucide-react';
+import { api } from '../../lib/api';
 
 export default function Reports() {
   const [stats, setStats] = useState({
@@ -18,41 +18,8 @@ export default function Reports() {
   }, []);
 
   const fetchReports = async () => {
-    const [ordersRes, productsRes, usersRes] = await Promise.all([
-      supabase.from('orders').select('total_amount, created_at, order_items(product_id, quantity, price, products(name))'),
-      supabase.from('products').select('id', { count: 'exact', head: true }),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }),
-    ]);
-
-    const orders = ordersRes.data || [];
-    const totalRevenue = orders.reduce((sum, order) => sum + order.total_amount, 0);
-
-    const productSales = new Map<string, { name: string; quantity: number; revenue: number }>();
-
-    orders.forEach(order => {
-      order.order_items?.forEach((item: any) => {
-        const productName = item.products?.name || 'Unknown';
-        const existing = productSales.get(productName) || { name: productName, quantity: 0, revenue: 0 };
-        existing.quantity += item.quantity;
-        existing.revenue += item.price * item.quantity;
-        productSales.set(productName, existing);
-      });
-    });
-
-    const topProducts = Array.from(productSales.values())
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5)
-      .map(p => ({ name: p.name, sales: p.quantity, revenue: p.revenue }));
-
-    setStats({
-      totalRevenue,
-      totalOrders: orders.length,
-      totalProducts: productsRes.count || 0,
-      totalUsers: usersRes.count || 0,
-      revenueByMonth: [],
-      topProducts,
-      recentOrders: orders.slice(0, 5),
-    });
+    const data = await api.getAdminReports();
+    setStats(data);
   };
 
   return (
@@ -138,7 +105,7 @@ export default function Reports() {
                     </p>
                   </div>
                   <span className="font-bold text-slate-900">
-                    Rp {order.total_amount.toLocaleString('id-ID')}
+                    Rp {Number(order.total_amount).toLocaleString('id-ID')}
                   </span>
                 </div>
               ))}

@@ -34,10 +34,9 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
 - **Lucide React** - Icon library
 
 ### Backend & Database
-- **Supabase** - Backend-as-a-Service
-  - PostgreSQL Database
-  - Authentication (Email/Password)
-  - Row Level Security (RLS)
+- **PHP API (XAMPP)** - Backend lokal terpisah
+  - MySQL Database
+  - Authentication (Email/Password) via session
 
 ### Build Tools
 - **Vite** - Build tool dan dev server
@@ -59,7 +58,7 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
 
 ### Prasyarat
 - Node.js 18+ dan npm
-- Akun Supabase (sudah dikonfigurasi)
+- XAMPP (Apache + MySQL + PHP 8+)
 
 ### Langkah-langkah Instalasi
 
@@ -73,26 +72,29 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
    npm install
    ```
 
-3. **Environment Variables**
-   File `.env` sudah dikonfigurasi dengan koneksi Supabase:
+3. **Setup Database (MySQL)**
+   - Buat database `solemates`.
+   - Import schema SQL dari `databse/schema.sql` melalui phpMyAdmin atau CLI MySQL.
+
+4. **Setup API PHP (XAMPP)**
+   - Letakkan folder `api/` ke `htdocs/solemates/api` (atau sesuaikan path).
+   - Konfigurasi kredensial database di `api/config.php` atau set env:
+     - `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`
+     - `APP_ORIGIN` (default `http://localhost:5173`)
+
+5. **Environment Variables Frontend**
+   Tambahkan `.env` pada root project:
    ```
-   VITE_SUPABASE_URL=your-supabase-url
-   VITE_SUPABASE_ANON_KEY=your-anon-key
+   VITE_API_URL=http://localhost/solemates/api
    ```
 
-4. **Database Setup**
-   Database schema sudah dibuat otomatis dengan:
-   - 8 tabel utama dengan RLS policies
-   - Sample data untuk brands, categories, dan products
-   - Indexes untuk performa optimal
-
-5. **Jalankan Development Server**
+6. **Jalankan Development Server**
    ```bash
    npm run dev
    ```
    Aplikasi akan berjalan di `http://localhost:5173`
 
-6. **Build untuk Production**
+7. **Build untuk Production**
    ```bash
    npm run build
    ```
@@ -128,7 +130,7 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
    - Atau akses langsung ke `/admin`
 
 2. **Membuat Admin Account**
-   Gunakan SQL query di Supabase:
+   Gunakan SQL query di MySQL:
    ```sql
    -- Update user existing menjadi admin
    UPDATE profiles
@@ -163,13 +165,19 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
 
 ```
 solemates/
+├── api/                    # PHP API (XAMPP)
+│   ├── auth/
+│   ├── admin/
+│   └── ...
+├── databse/                # MySQL schema
+│   └── schema.sql
 ├── src/
 │   ├── components/          # Reusable components
 │   │   └── Navbar.tsx
 │   ├── contexts/            # React contexts
 │   │   └── AuthContext.tsx
 │   ├── lib/                 # Libraries & utilities
-│   │   └── supabase.ts
+│   │   └── api.ts
 │   ├── pages/              # Page components
 │   │   ├── Login.tsx
 │   │   ├── Register.tsx
@@ -198,15 +206,9 @@ solemates/
 
 ## Security Features
 
-### Row Level Security (RLS)
-Semua tabel dilindungi dengan RLS policies:
-- Users hanya bisa akses data mereka sendiri
-- Admin bisa akses semua data
-- Public bisa view products, brands, dan categories
-
 ### Authentication
-- Email/password authentication via Supabase
-- Session management
+- Email/password authentication via PHP API
+- Session management (cookie-based)
 - Protected routes untuk authenticated users
 - Admin-only routes untuk admin dashboard
 
@@ -227,11 +229,11 @@ npm install
 ```
 
 ### Database Connection Issues
-- Periksa environment variables di `.env`
-- Pastikan Supabase project aktif
+- Periksa konfigurasi di `api/config.php`
+- Pastikan MySQL di XAMPP berjalan
 
-### RLS Policy Issues
-- Jika admin tidak bisa akses data, cek role di profiles table
+### Role Issues
+- Jika admin tidak bisa akses data, cek role di `profiles` table
 - Pastikan user sudah login dan session aktif
 
 ## Scripts Available

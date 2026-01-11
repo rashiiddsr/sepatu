@@ -1,9 +1,9 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { CartItemWithProduct } from '../types/database';
 import { CreditCard, Truck, MapPin } from 'lucide-react';
+import { api } from '../lib/api';
 
 export default function Checkout() {
   const { user, profile } = useAuth();
@@ -33,17 +33,12 @@ export default function Checkout() {
   }, [user, profile]);
 
   const fetchCartItems = async () => {
-    const { data, error } = await supabase
-      .from('cart_items')
-      .select('*, products(*)')
-      .eq('user_id', user!.id);
-
-    if (data) {
-      if (data.length === 0) {
-        navigate('/cart');
-      }
-      setCartItems(data);
+    const data = await api.getCartItems();
+    if (data.length === 0) {
+      navigate('/cart');
+      return;
     }
+    setCartItems(data);
   };
 
   const subtotal = cartItems.reduce(
@@ -60,10 +55,8 @@ export default function Checkout() {
 
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        user_id: user!.id,
+    try {
+      await api.createOrder({
         order_number: orderNumber,
         total_amount: total,
         shipping_address: shippingAddress,
@@ -73,43 +66,24 @@ export default function Checkout() {
         shipping_cost: shippingCost,
         notes,
         status: 'pending',
-      })
-      .select()
-      .single();
+        items: cartItems.map((item) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          size: item.size,
+          color: item.color,
+          price: item.products?.price || 0,
+        })),
+      });
 
-    if (orderError || !order) {
+      await api.clearCart();
+
+      alert('Order placed successfully!');
+      navigate('/dashboard');
+    } catch (error) {
       alert('Failed to create order');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const orderItems = cartItems.map((item) => ({
-      order_id: order.id,
-      product_id: item.product_id,
-      quantity: item.quantity,
-      size: item.size,
-      color: item.color,
-      price: item.products?.price || 0,
-    }));
-
-    const { error: itemsError } = await supabase
-      .from('order_items')
-      .insert(orderItems);
-
-    if (itemsError) {
-      alert('Failed to save order items');
-      setLoading(false);
-      return;
-    }
-
-    await supabase
-      .from('cart_items')
-      .delete()
-      .eq('user_id', user!.id);
-
-    alert('Order placed successfully!');
-    navigate('/dashboard');
-    setLoading(false);
   };
 
   return (
@@ -207,7 +181,7 @@ export default function Checkout() {
                       />
                       <div>
                         <p className="font-medium text-slate-900">Express Shipping</p>
-                        <p className="text-sm text-slate-600">2-3 business days</p>
+                        <p className="text-sm text-slate-600">1-2 business days</p>
                       </div>
                     </div>
                     <span className="font-medium text-slate-900">Rp 50,000</span>
@@ -218,15 +192,23 @@ export default function Checkout() {
               <div className="bg-white rounded-xl p-6 shadow-sm">
                 <div className="flex items-center space-x-2 mb-6">
                   <CreditCard className="w-5 h-5 text-slate-900" />
-                  <h2 className="text-xl font-bold text-slate-900">Additional Notes</h2>
+                  <h2 className="text-xl font-bold text-slate-900">Payment Details</h2>
                 </div>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
-                  placeholder="Any special instructions for your order..."
-                />
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Payment Notes
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={3}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                      placeholder="Additional notes (optional)"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -235,29 +217,6 @@ export default function Checkout() {
                 <h2 className="text-xl font-bold text-slate-900 mb-6">Order Summary</h2>
 
                 <div className="space-y-4 mb-6">
-                  {cartItems.map((item) => (
-                    <div key={item.id} className="flex items-center space-x-3">
-                      <img
-                        src={item.products?.image_url || 'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=100'}
-                        alt={item.products?.name}
-                        className="w-16 h-16 object-cover rounded-lg"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-900 truncate">
-                          {item.products?.name}
-                        </p>
-                        <p className="text-sm text-slate-600">
-                          {item.quantity}x | {item.size}
-                        </p>
-                      </div>
-                      <span className="font-medium text-slate-900">
-                        Rp {((item.products?.price || 0) * item.quantity).toLocaleString('id-ID')}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="border-t border-slate-200 pt-4 space-y-3">
                   <div className="flex justify-between text-slate-600">
                     <span>Subtotal</span>
                     <span>Rp {subtotal.toLocaleString('id-ID')}</span>
@@ -266,7 +225,7 @@ export default function Checkout() {
                     <span>Shipping</span>
                     <span>Rp {shippingCost.toLocaleString('id-ID')}</span>
                   </div>
-                  <div className="border-t border-slate-200 pt-3">
+                  <div className="border-t border-slate-200 pt-4">
                     <div className="flex justify-between text-lg font-bold text-slate-900">
                       <span>Total</span>
                       <span>Rp {total.toLocaleString('id-ID')}</span>
@@ -277,14 +236,10 @@ export default function Checkout() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-slate-900 text-white py-4 rounded-lg font-medium hover:bg-slate-800 transition disabled:opacity-50 mt-6"
+                  className="w-full bg-slate-900 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Processing...' : 'Place Order'}
                 </button>
-
-                <p className="text-xs text-slate-500 text-center mt-4">
-                  By placing this order, you agree to our terms and conditions
-                </p>
               </div>
             </div>
           </div>

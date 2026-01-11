@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { supabase } from '../../lib/supabase';
 import type { Product, Brand, Category } from '../../types/database';
 import { Plus, Edit2, Trash2, X } from 'lucide-react';
+import { api } from '../../lib/api';
 
 export default function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -29,15 +29,15 @@ export default function ProductManagement() {
   }, []);
 
   const fetchData = async () => {
-    const [productsRes, brandsRes, categoriesRes] = await Promise.all([
-      supabase.from('products').select('*').order('created_at', { ascending: false }),
-      supabase.from('brands').select('*').order('name'),
-      supabase.from('categories').select('*').order('name'),
+    const [productsData, brandsData, categoriesData] = await Promise.all([
+      api.getProducts(),
+      api.getBrands(),
+      api.getCategories(),
     ]);
 
-    if (productsRes.data) setProducts(productsRes.data);
-    if (brandsRes.data) setBrands(brandsRes.data);
-    if (categoriesRes.data) setCategories(categoriesRes.data);
+    setProducts(productsData);
+    setBrands(brandsData);
+    setCategories(categoriesData);
   };
 
   const openCreateModal = () => {
@@ -85,53 +85,37 @@ export default function ProductManagement() {
       category_id: formData.category_id || null,
       price: formData.price,
       stock: formData.stock,
-      sizes: formData.sizes.split(',').map(s => s.trim()),
-      colors: formData.colors.split(',').map(c => c.trim()),
+      sizes: formData.sizes.split(',').map(s => s.trim()).filter(Boolean),
+      colors: formData.colors.split(',').map(c => c.trim()).filter(Boolean),
       image_url: formData.image_url,
       is_featured: formData.is_featured,
     };
 
-    if (editingProduct) {
-      const { error } = await supabase
-        .from('products')
-        .update(productData)
-        .eq('id', editingProduct.id);
-
-      if (error) {
-        alert('Failed to update product');
-      } else {
+    try {
+      if (editingProduct) {
+        await api.updateProduct({ ...productData, id: editingProduct.id });
         alert('Product updated successfully!');
-        setShowModal(false);
-        fetchData();
-      }
-    } else {
-      const { error } = await supabase
-        .from('products')
-        .insert(productData);
-
-      if (error) {
-        alert('Failed to create product');
       } else {
+        await api.createProduct(productData);
         alert('Product created successfully!');
-        setShowModal(false);
-        fetchData();
       }
+      setShowModal(false);
+      fetchData();
+    } catch (error) {
+      alert('Failed to save product');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const deleteProduct = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
 
-    const { error } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      alert('Failed to delete product');
-    } else {
+    try {
+      await api.deleteProduct(id);
       fetchData();
+    } catch (error) {
+      alert('Failed to delete product');
     }
   };
 
@@ -218,7 +202,7 @@ export default function ProductManagement() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full">
             <div className="flex justify-between items-center p-6 border-b border-slate-200">
               <h2 className="text-2xl font-bold text-slate-900">
                 {editingProduct ? 'Edit Product' : 'Add New Product'}
@@ -233,39 +217,33 @@ export default function ProductManagement() {
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Product Name
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Product Name</label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Description
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Description</label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Brand
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Brand</label>
                   <select
                     value={formData.brand_id}
                     onChange={(e) => setFormData({ ...formData, brand_id: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                   >
                     <option value="">Select Brand</option>
                     {brands.map((brand) => (
@@ -273,15 +251,12 @@ export default function ProductManagement() {
                     ))}
                   </select>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Category
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Category</label>
                   <select
                     value={formData.category_id}
                     onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                   >
                     <option value="">Select Category</option>
                     {categories.map((category) => (
@@ -293,100 +268,84 @@ export default function ProductManagement() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Price (Rp)
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Price</label>
                   <input
                     type="number"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
                     required
-                    min="0"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Stock
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Stock</label>
                   <input
                     type="number"
                     value={formData.stock}
                     onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) })}
                     required
-                    min="0"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Sizes</label>
+                  <input
+                    type="text"
+                    value={formData.sizes}
+                    onChange={(e) => setFormData({ ...formData, sizes: e.target.value })}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    placeholder="38,39,40,41"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Colors</label>
+                  <input
+                    type="text"
+                    value={formData.colors}
+                    onChange={(e) => setFormData({ ...formData, colors: e.target.value })}
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    placeholder="Black,White"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Sizes (comma-separated)
-                </label>
-                <input
-                  type="text"
-                  value={formData.sizes}
-                  onChange={(e) => setFormData({ ...formData, sizes: e.target.value })}
-                  placeholder="38,39,40,41,42"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Colors (comma-separated)
-                </label>
-                <input
-                  type="text"
-                  value={formData.colors}
-                  onChange={(e) => setFormData({ ...formData, colors: e.target.value })}
-                  placeholder="Black,White,Red"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Image URL
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Image URL</label>
                 <input
                   type="url"
                   value={formData.image_url}
                   onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                  placeholder="https://example.com/image.jpg"
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                 />
               </div>
 
               <div className="flex items-center space-x-2">
                 <input
                   type="checkbox"
-                  id="featured"
                   checked={formData.is_featured}
                   onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
-                  className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                  className="text-slate-900 focus:ring-slate-900"
                 />
-                <label htmlFor="featured" className="text-sm font-medium text-slate-700">
-                  Mark as Featured
-                </label>
+                <label className="text-sm font-medium text-slate-700">Featured Product</label>
               </div>
 
-              <div className="flex space-x-4 pt-4">
+              <div className="flex justify-end space-x-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition"
+                  className="px-6 py-3 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 bg-slate-900 text-white px-6 py-3 rounded-lg hover:bg-slate-800 transition disabled:opacity-50"
+                  className="px-6 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition disabled:opacity-50"
                 >
-                  {loading ? 'Saving...' : editingProduct ? 'Update Product' : 'Create Product'}
+                  {loading ? 'Saving...' : 'Save Product'}
                 </button>
               </div>
             </form>

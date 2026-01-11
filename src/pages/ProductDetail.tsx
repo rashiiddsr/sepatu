@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import type { ProductWithDetails } from '../types/database';
 import { ShoppingCart, Heart, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -20,11 +20,8 @@ export default function ProductDetail() {
   }, [id]);
 
   const fetchProduct = async () => {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*, brands(*), categories(*)')
-      .eq('id', id!)
-      .maybeSingle();
+    setLoading(true);
+    const data = await api.getProduct(id!);
 
     if (data) {
       setProduct(data);
@@ -45,22 +42,16 @@ export default function ProductDetail() {
       return;
     }
 
-    const { error } = await supabase
-      .from('cart_items')
-      .upsert({
-        user_id: user.id,
+    try {
+      await api.addCartItem({
         product_id: product!.id,
         quantity,
         size: selectedSize,
         color: selectedColor,
-      }, {
-        onConflict: 'user_id,product_id,size,color',
       });
-
-    if (error) {
-      alert('Failed to add to cart');
-    } else {
       alert('Added to cart!');
+    } catch (error) {
+      alert('Failed to add to cart');
     }
   };
 
@@ -70,18 +61,15 @@ export default function ProductDetail() {
       return;
     }
 
-    const { error } = await supabase
-      .from('wishlist')
-      .insert({ user_id: user.id, product_id: product!.id });
-
-    if (error) {
-      if (error.code === '23505') {
+    try {
+      await api.addWishlistItem(product!.id);
+      alert('Added to wishlist!');
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('already')) {
         alert('Item already in wishlist');
       } else {
         alert('Failed to add to wishlist');
       }
-    } else {
-      alert('Added to wishlist!');
     }
   };
 
@@ -200,51 +188,44 @@ export default function ProductDetail() {
                 <div className="flex items-center space-x-3">
                   <button
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="w-10 h-10 border-2 border-slate-300 rounded-lg hover:border-slate-400 transition font-medium"
+                    className="w-10 h-10 border-2 border-slate-300 rounded-lg hover:border-slate-400 transition"
                   >
                     -
                   </button>
-                  <span className="text-lg font-medium w-12 text-center">{quantity}</span>
+                  <span className="text-xl font-medium w-8 text-center">{quantity}</span>
                   <button
-                    onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
-                    className="w-10 h-10 border-2 border-slate-300 rounded-lg hover:border-slate-400 transition font-medium"
+                    onClick={() => setQuantity(quantity + 1)}
+                    className="w-10 h-10 border-2 border-slate-300 rounded-lg hover:border-slate-400 transition"
                   >
                     +
                   </button>
-                  <span className="text-sm text-slate-500 ml-4">
-                    {product.stock} in stock
-                  </span>
                 </div>
               </div>
 
-              <div className="flex space-x-4 pt-4">
+              <div className="flex space-x-4">
                 <button
                   onClick={addToCart}
-                  className="flex-1 bg-slate-900 text-white py-4 rounded-xl font-medium hover:bg-slate-800 transition flex items-center justify-center space-x-2"
+                  className="flex-1 bg-slate-900 text-white py-4 rounded-xl font-semibold hover:bg-slate-800 transition flex items-center justify-center space-x-2"
                 >
                   <ShoppingCart className="w-5 h-5" />
                   <span>Add to Cart</span>
                 </button>
                 <button
                   onClick={addToWishlist}
-                  className="px-6 py-4 border-2 border-slate-900 text-slate-900 rounded-xl font-medium hover:bg-slate-50 transition"
+                  className="px-6 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition"
                 >
-                  <Heart className="w-5 h-5" />
+                  <Heart className="w-6 h-6" />
                 </button>
               </div>
 
-              <div className="bg-slate-50 rounded-xl p-6 space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Category</span>
-                  <span className="font-medium text-slate-900">{product.categories?.name}</span>
+              <div className="grid grid-cols-2 gap-4 pt-6 border-t border-slate-200">
+                <div>
+                  <p className="text-sm text-slate-500">Category</p>
+                  <p className="font-medium text-slate-900">{product.categories?.name}</p>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Brand</span>
-                  <span className="font-medium text-slate-900">{product.brands?.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Stock</span>
-                  <span className="font-medium text-slate-900">{product.stock} units</span>
+                <div>
+                  <p className="text-sm text-slate-500">Stock</p>
+                  <p className="font-medium text-slate-900">{product.stock} available</p>
                 </div>
               </div>
             </div>
