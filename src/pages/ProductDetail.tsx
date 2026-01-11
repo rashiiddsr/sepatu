@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import type { ProductWithDetails } from '../types/database';
 import { ShoppingCart, Heart, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useShop } from '../contexts/ShopContext';
 import { api } from '../lib/api';
 
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { refreshCounts } = useShop();
   const [product, setProduct] = useState<ProductWithDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSize, setSelectedSize] = useState('');
@@ -75,6 +77,7 @@ export default function ProductDetail() {
         size: selectedSize,
         color: selectedColor,
       });
+      await refreshCounts();
       alert('Added to cart!');
     } catch (error) {
       alert('Failed to add to cart');
@@ -94,6 +97,7 @@ export default function ProductDetail() {
 
     try {
       await api.addWishlistItem(product.id);
+      await refreshCounts();
       alert('Added to wishlist!');
     } catch (error) {
       if (error instanceof Error && error.message.includes('already')) {
