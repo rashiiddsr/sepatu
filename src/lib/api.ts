@@ -5,6 +5,7 @@ import type {
   OrderWithItems,
   ProductWithDetails,
   Profile,
+  Tag,
   WishlistItemWithProduct,
 } from '../types/database';
 
@@ -61,6 +62,7 @@ export const api = {
     }),
   getBrands: () => apiFetch<Brand[]>('/brands'),
   getCategories: () => apiFetch<Category[]>('/categories'),
+  getTags: () => apiFetch<Tag[]>('/tags'),
   getProducts: () => apiFetch<ProductWithDetails[]>('/products'),
   getProduct: (id: string) =>
     apiFetch<ProductWithDetails | null>(`/products?id=${encodeURIComponent(id)}`),
@@ -153,6 +155,63 @@ export const api = {
     apiFetch<boolean>('/admin/users', {
       method: 'PUT',
       body: JSON.stringify({ id, role }),
+    }),
+  getAdminBrands: () => apiFetch<Brand[]>('/admin/brands'),
+  createAdminBrand: (payload: {
+    name: string;
+    description?: string | null;
+    logo_url?: string | null;
+  }) =>
+    apiFetch<{ id: string }>('/admin/brands', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateAdminBrand: (payload: {
+    id: string;
+    name?: string;
+    description?: string | null;
+    logo_url?: string | null;
+  }) =>
+    apiFetch<boolean>('/admin/brands', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteAdminBrand: (id: string) =>
+    apiFetch<boolean>('/admin/brands', {
+      method: 'DELETE',
+      body: JSON.stringify({ id }),
+    }),
+  getAdminCategories: () => apiFetch<Category[]>('/admin/categories'),
+  createAdminCategory: (payload: { name: string; description?: string | null }) =>
+    apiFetch<{ id: string }>('/admin/categories', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateAdminCategory: (payload: { id: string; name?: string; description?: string | null }) =>
+    apiFetch<boolean>('/admin/categories', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteAdminCategory: (id: string) =>
+    apiFetch<boolean>('/admin/categories', {
+      method: 'DELETE',
+      body: JSON.stringify({ id }),
+    }),
+  getAdminTags: () => apiFetch<Tag[]>('/admin/tags'),
+  createAdminTag: (payload: { name: string }) =>
+    apiFetch<{ id: string }>('/admin/tags', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateAdminTag: (payload: { id: string; name?: string }) =>
+    apiFetch<boolean>('/admin/tags', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteAdminTag: (id: string) =>
+    apiFetch<boolean>('/admin/tags', {
+      method: 'DELETE',
+      body: JSON.stringify({ id }),
     }),
   getAdminReports: () =>
     apiFetch<{
