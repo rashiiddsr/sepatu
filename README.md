@@ -233,7 +233,6 @@ npm install
 ### API Connection Issues
 - Pastikan API Node.js berjalan di port 4000 (`api/.env` untuk konfigurasi)
 - Pastikan `VITE_API_URL` mengarah ke `http://localhost:4000/api`
-- Cek proxy Vite pada `vite.config.ts` bila memakai `/api` langsung
 
 ### Role Issues
 - Jika admin tidak bisa akses data, cek role di `profiles` table
