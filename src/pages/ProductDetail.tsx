@@ -21,19 +21,45 @@ export default function ProductDetail() {
 
   const fetchProduct = async () => {
     setLoading(true);
-    const data = await api.getProduct(id!);
-
-    if (data) {
-      setProduct(data);
-      if (data.sizes && data.sizes.length > 0) setSelectedSize(data.sizes[0]);
-      if (data.colors && data.colors.length > 0) setSelectedColor(data.colors[0]);
+    if (!id) {
+      setProduct(null);
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    try {
+      const data = await api.getProduct(id);
+
+      if (data) {
+        setProduct(data);
+        if (data.sizes && data.sizes.length > 0) {
+          setSelectedSize(data.sizes[0]);
+        } else {
+          setSelectedSize('');
+        }
+        if (data.colors && data.colors.length > 0) {
+          setSelectedColor(data.colors[0]);
+        } else {
+          setSelectedColor('');
+        }
+      } else {
+        setProduct(null);
+      }
+    } catch (error) {
+      setProduct(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const addToCart = async () => {
     if (!user) {
       navigate('/login');
+      return;
+    }
+
+    if (!product) {
+      alert('Product is not available');
       return;
     }
 
@@ -44,7 +70,7 @@ export default function ProductDetail() {
 
     try {
       await api.addCartItem({
-        product_id: product!.id,
+        product_id: product.id,
         quantity,
         size: selectedSize,
         color: selectedColor,
@@ -61,8 +87,13 @@ export default function ProductDetail() {
       return;
     }
 
+    if (!product) {
+      alert('Product is not available');
+      return;
+    }
+
     try {
-      await api.addWishlistItem(product!.id);
+      await api.addWishlistItem(product.id);
       alert('Added to wishlist!');
     } catch (error) {
       if (error instanceof Error && error.message.includes('already')) {
@@ -135,7 +166,7 @@ export default function ProductDetail() {
 
               <div className="py-4 border-y border-slate-200">
                 <p className="text-slate-700 leading-relaxed">
-                  {product.description}
+                  {product.description || 'No description available.'}
                 </p>
               </div>
 
@@ -144,19 +175,28 @@ export default function ProductDetail() {
                   Select Size
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {product.sizes && product.sizes.map((size) => (
+                  {product.sizes && product.sizes.length > 0 ? (
+                    product.sizes.map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => setSelectedSize(size)}
+                        className={`px-4 py-2 border-2 rounded-lg font-medium transition ${
+                          selectedSize === size
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-300 text-slate-700 hover:border-slate-400'
+                        }`}
+                      >
+                        {size}
+                      </button>
+                    ))
+                  ) : (
                     <button
-                      key={size}
-                      onClick={() => setSelectedSize(size)}
-                      className={`px-4 py-2 border-2 rounded-lg font-medium transition ${
-                        selectedSize === size
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-300 text-slate-700 hover:border-slate-400'
-                      }`}
+                      type="button"
+                      className="px-4 py-2 border-2 border-dashed rounded-lg text-slate-400"
                     >
-                      {size}
+                      No sizes available
                     </button>
-                  ))}
+                  )}
                 </div>
               </div>
 
@@ -165,19 +205,28 @@ export default function ProductDetail() {
                   Select Color
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {product.colors && product.colors.map((color) => (
+                  {product.colors && product.colors.length > 0 ? (
+                    product.colors.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setSelectedColor(color)}
+                        className={`px-4 py-2 border-2 rounded-lg font-medium transition ${
+                          selectedColor === color
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-300 text-slate-700 hover:border-slate-400'
+                        }`}
+                      >
+                        {color}
+                      </button>
+                    ))
+                  ) : (
                     <button
-                      key={color}
-                      onClick={() => setSelectedColor(color)}
-                      className={`px-4 py-2 border-2 rounded-lg font-medium transition ${
-                        selectedColor === color
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-300 text-slate-700 hover:border-slate-400'
-                      }`}
+                      type="button"
+                      className="px-4 py-2 border-2 border-dashed rounded-lg text-slate-400"
                     >
-                      {color}
+                      No colors available
                     </button>
-                  ))}
+                  )}
                 </div>
               </div>
 

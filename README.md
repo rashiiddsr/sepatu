@@ -34,8 +34,8 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
 - **Lucide React** - Icon library
 
 ### Backend & Database
-- **PHP API (XAMPP)** - Backend lokal terpisah
-  - MySQL Database
+- **Node.js API (Express)** - Backend lokal terpisah
+  - JSON data store (file-based)
   - Authentication (Email/Password) via session
 
 ### Build Tools
@@ -58,7 +58,6 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
 
 ### Prasyarat
 - Node.js 18+ dan npm
-- XAMPP (Apache + MySQL + PHP 8+)
 
 ### Langkah-langkah Instalasi
 
@@ -72,29 +71,25 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
    npm install
    ```
 
-3. **Setup Database (MySQL)**
-   - Buat database `solemates`.
-   - Import schema SQL dari `databse/schema.sql` melalui phpMyAdmin atau CLI MySQL.
+3. **Setup API Node.js**
+   - Masuk ke folder `api/`
+   - Install dependencies:
+     ```bash
+     npm install
+     ```
+   - Pastikan konfigurasi ada di `api/.env`
+   - Jalankan server API:
+     ```bash
+     npm run dev
+     ```
 
-4. **Setup API PHP (XAMPP)**
-   - Letakkan folder `api/` ke `htdocs/solemates/api` (atau sesuaikan path).
-   - Konfigurasi kredensial database di `api/config.php` atau set env:
-     - `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`
-     - `APP_ORIGIN` (default `http://localhost:5173`)
-
-5. **Environment Variables Frontend**
-   Tambahkan `.env` pada root project:
-   ```
-   VITE_API_URL=http://localhost/solemates/api
-   ```
-
-6. **Jalankan Development Server**
+4. **Jalankan Development Server**
    ```bash
    npm run dev
    ```
    Aplikasi akan berjalan di `http://localhost:5173`
 
-7. **Build untuk Production**
+5. **Build untuk Production**
    ```bash
    npm run build
    ```
@@ -130,13 +125,9 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
    - Atau akses langsung ke `/admin`
 
 2. **Membuat Admin Account**
-   Gunakan SQL query di MySQL:
-   ```sql
-   -- Update user existing menjadi admin
-   UPDATE profiles
-   SET role = 'admin'
-   WHERE id = 'user-id-here';
-   ```
+   Akun admin default tersedia di API:
+   - Email: `admin@solemates.local`
+   - Password: `admin123`
 
 3. **Manajemen Produk**
    - Tambah produk baru dengan form lengkap
@@ -165,11 +156,10 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
 
 ```
 solemates/
-├── api/                    # PHP API (XAMPP)
-│   ├── auth/
-│   ├── admin/
-│   └── ...
-├── databse/                # MySQL schema
+├── api/                    # Node.js API (Express)
+│   ├── src/
+│   └── data/
+├── databse/                # MySQL schema (referensi)
 │   └── schema.sql
 ├── src/
 │   ├── components/          # Reusable components
@@ -207,17 +197,17 @@ solemates/
 ## Security Features
 
 ### Authentication
-- Email/password authentication via PHP API
+- Email/password authentication via Node.js API
 - Session management (cookie-based)
 - Protected routes untuk authenticated users
 - Admin-only routes untuk admin dashboard
 
 ## Sample Data
 
-Database sudah terisi dengan sample data:
-- 6 brands (Nike, Adidas, Puma, Converse, Vans, New Balance)
-- 8 categories
-- 6 sample products dengan images dari Pexels
+API sudah terisi dengan sample data:
+- 2 brands (Nike, Adidas)
+- 2 categories
+- 3 sample products dengan images dari Pexels
 
 ## Troubleshooting
 
@@ -228,9 +218,9 @@ rm -rf node_modules package-lock.json
 npm install
 ```
 
-### Database Connection Issues
-- Periksa konfigurasi di `api/config.php`
-- Pastikan MySQL di XAMPP berjalan
+### API Connection Issues
+- Pastikan API Node.js berjalan (`api/.env` untuk konfigurasi)
+- Cek proxy Vite pada `vite.config.ts`
 
 ### Role Issues
 - Jika admin tidak bisa akses data, cek role di `profiles` table
