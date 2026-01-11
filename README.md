@@ -35,7 +35,7 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
 
 ### Backend & Database
 - **Node.js API (Express)** - Backend lokal terpisah
-  - JSON data store (file-based)
+  - Koneksi ke **MySQL** untuk data utama
   - Authentication (Email/Password) via session
 
 ### Build Tools
@@ -71,19 +71,31 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
    npm install
    ```
 
-3. **Setup API Node.js**
+3. **Setup API Node.js (port 4000)**
    - Masuk ke folder `api/`
    - Install dependencies:
      ```bash
      npm install
      ```
-   - Pastikan konfigurasi ada di `api/.env`
+   - Pastikan konfigurasi database ada di `api/.env`:
+     ```bash
+     PORT=4000
+     DB_HOST=localhost
+     DB_PORT=3306
+     DB_USER=solemates
+     DB_PASSWORD=solemates_password
+     DB_NAME=solemates
+     ```
    - Jalankan server API:
      ```bash
      npm run dev
      ```
 
-4. **Jalankan Development Server**
+4. **Jalankan Development Server (port 5173)**
+   - Buat file `.env` di root untuk Vite:
+     ```bash
+     VITE_API_URL=http://localhost:4000/api
+     ```
    ```bash
    npm run dev
    ```
@@ -219,8 +231,9 @@ npm install
 ```
 
 ### API Connection Issues
-- Pastikan API Node.js berjalan (`api/.env` untuk konfigurasi)
-- Cek proxy Vite pada `vite.config.ts`
+- Pastikan API Node.js berjalan di port 4000 (`api/.env` untuk konfigurasi)
+- Pastikan `VITE_API_URL` mengarah ke `http://localhost:4000/api`
+- Cek proxy Vite pada `vite.config.ts` bila memakai `/api` langsung
 
 ### Role Issues
 - Jika admin tidak bisa akses data, cek role di `profiles` table
