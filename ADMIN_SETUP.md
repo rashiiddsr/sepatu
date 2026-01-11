@@ -6,17 +6,12 @@ Panduan untuk membuat dan mengelola admin account di Solemates dengan API Node.j
 
 API sudah menyediakan akun admin untuk development:
 
-- Email: `superadmin@gmail.com`
-- Password: `superadmin`
-
-atau gunakan akun admin:
-
 - Email: `admin@solemates.local`
 - Password: `admin123`
 
 ## Mengubah Role User Menjadi Admin
 
-1. Login sebagai admin default melalui `/admin/login`.
+1. Login sebagai admin default.
 2. Buka halaman **Admin → Users** (`/admin/users`).
 3. Ubah role user menjadi `admin` atau `super_admin`.
 
@@ -24,7 +19,7 @@ atau gunakan akun admin:
 
 1. Logout dari aplikasi.
 2. Login kembali menggunakan akun admin.
-3. Akses dashboard admin melalui `/admin`.
+3. Tombol **Admin** akan muncul di navbar.
 
 ## Testing Admin Features
 

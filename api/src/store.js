@@ -9,21 +9,13 @@ const createSeedData = () => {
   const brandAdidasId = randomUUID();
   const categorySneakersId = randomUUID();
   const categoryRunningId = randomUUID();
-  const superAdminProfileId = randomUUID();
   const adminProfileId = randomUUID();
   const customerProfileId = randomUUID();
-  const superAdminUserId = randomUUID();
   const adminUserId = randomUUID();
   const customerUserId = randomUUID();
 
   return {
     users: [
-      {
-        id: superAdminUserId,
-        email: 'superadmin@gmail.com',
-        password: 'superadmin',
-        profile_id: superAdminProfileId,
-      },
       {
         id: adminUserId,
         email: 'admin@solemates.local',
@@ -38,17 +30,6 @@ const createSeedData = () => {
       },
     ],
     profiles: [
-      {
-        id: superAdminProfileId,
-        full_name: 'Superadmin',
-        phone: null,
-        address: null,
-        city: null,
-        postal_code: null,
-        role: 'super_admin',
-        created_at: now(),
-        updated_at: now(),
-      },
       {
         id: adminProfileId,
         full_name: 'Admin Solemates',
