@@ -3,7 +3,8 @@ const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const { loadStore, updateStore, now, createId } = require('./store');
+const { randomUUID } = require('crypto');
+const { query, withTransaction } = require('./db');
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -47,6 +48,74 @@ app.use(
 const ok = (res, data) => res.json({ data });
 const fail = (res, status, message) => res.status(status).json({ error: message });
 
+const parseJsonValue = (value, fallback) => {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+  if (Array.isArray(value) || typeof value === 'object') {
+    return value;
+  }
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return fallback;
+  }
+};
+
+const mapProductRow = (row) => {
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.product_id,
+    name: row.product_name,
+    description: row.product_description,
+    brand_id: row.product_brand_id,
+    category_id: row.product_category_id,
+    price: Number(row.product_price),
+    stock: row.product_stock,
+    sizes: parseJsonValue(row.product_sizes, []),
+    colors: parseJsonValue(row.product_colors, []),
+    image_url: row.product_image_url,
+    images: parseJsonValue(row.product_images, []),
+    is_featured: Boolean(row.product_is_featured),
+    created_at: row.product_created_at,
+    updated_at: row.product_updated_at,
+    brands: row.brand_id
+      ? {
+          id: row.brand_id,
+          name: row.brand_name,
+          description: row.brand_description,
+          logo_url: row.brand_logo_url,
+          created_at: row.brand_created_at,
+        }
+      : null,
+    categories: row.category_id
+      ? {
+          id: row.category_id,
+          name: row.category_name,
+          description: row.category_description,
+          created_at: row.category_created_at,
+        }
+      : null,
+  };
+};
+
+const mapProfileRow = (row) =>
+  row
+    ? {
+        id: row.id,
+        full_name: row.full_name,
+        phone: row.phone,
+        address: row.address,
+        city: row.city,
+        postal_code: row.postal_code,
+        role: row.role,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      }
+    : null;
+
 const requireAuth = async (req, res, next) => {
   if (!req.session.userId) {
     fail(res, 401, 'Unauthorized');
@@ -56,52 +125,36 @@ const requireAuth = async (req, res, next) => {
 };
 
 const requireAdmin = async (req, res, next) => {
-  const store = await loadStore();
-  const user = store.users.find((entry) => entry.id === req.session.userId);
-  const profile = store.profiles.find((entry) => entry.id === user?.profile_id);
-  if (!profile || (profile.role !== 'admin' && profile.role !== 'super_admin')) {
+  const [rows] = await query('SELECT role FROM profiles WHERE id = ?', [req.session.userId]);
+  const role = rows[0]?.role;
+  if (!role || (role !== 'admin' && role !== 'super_admin')) {
     fail(res, 403, 'Forbidden');
     return;
   }
   next();
 };
 
-const withProductDetails = (store, product) => ({
-  ...product,
-  brands: store.brands.find((brand) => brand.id === product.brand_id) || null,
-  categories: store.categories.find((category) => category.id === product.category_id) || null,
-});
-
-const withCartDetails = (store, item) => ({
-  ...item,
-  products: store.products.find((product) => product.id === item.product_id) || null,
-});
-
-const withOrderDetails = (store, order) => ({
-  ...order,
-  order_items: store.order_items
-    .filter((item) => item.order_id === order.id)
-    .map((item) => ({
-      ...item,
-      products: store.products.find((product) => product.id === item.product_id) || null,
-    })),
-});
-
 router.get('/auth/session', async (req, res) => {
   if (!req.session.userId) {
     ok(res, null);
     return;
   }
-  const store = await loadStore();
-  const user = store.users.find((entry) => entry.id === req.session.userId);
-  const profile = store.profiles.find((entry) => entry.id === user?.profile_id);
-  if (!user || !profile) {
+  const [rows] = await query(
+    `SELECT u.id, u.email, p.full_name, p.phone, p.address, p.city, p.postal_code, p.role,
+      p.created_at, p.updated_at
+     FROM users u
+     JOIN profiles p ON p.id = u.id
+     WHERE u.id = ?`,
+    [req.session.userId]
+  );
+  const user = rows[0];
+  if (!user) {
     ok(res, null);
     return;
   }
   ok(res, {
     user: { id: user.id, email: user.email },
-    profile,
+    profile: mapProfileRow(user),
   });
 });
 
@@ -111,19 +164,23 @@ router.post('/auth/login', async (req, res) => {
     fail(res, 400, 'Email and password are required');
     return;
   }
-  const store = await loadStore();
-  const user = store.users.find(
-    (entry) => entry.email.toLowerCase() === String(email).toLowerCase()
+  const [rows] = await query(
+    `SELECT u.id, u.email, u.password_hash, p.full_name, p.phone, p.address, p.city, p.postal_code,
+      p.role, p.created_at, p.updated_at
+     FROM users u
+     JOIN profiles p ON p.id = u.id
+     WHERE LOWER(u.email) = LOWER(?)`,
+    [email]
   );
-  if (!user || user.password !== password) {
+  const user = rows[0];
+  if (!user || user.password_hash !== password) {
     fail(res, 401, 'Invalid credentials');
     return;
   }
-  const profile = store.profiles.find((entry) => entry.id === user.profile_id);
   req.session.userId = user.id;
   ok(res, {
     user: { id: user.id, email: user.email },
-    profile,
+    profile: mapProfileRow(user),
   });
 });
 
@@ -133,46 +190,38 @@ router.post('/auth/register', async (req, res) => {
     fail(res, 400, 'Email, password, and full name are required');
     return;
   }
-  const result = await updateStore((store) => {
-    const existing = store.users.find(
-      (entry) => entry.email.toLowerCase() === String(email).toLowerCase()
+  const [existing] = await query('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
+  if (existing.length > 0) {
+    fail(res, 400, 'Email already registered');
+    return;
+  }
+
+  const userId = randomUUID();
+  await withTransaction(async (connection) => {
+    await connection.query(
+      'INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)',
+      [userId, email, password]
     );
-    if (existing) {
-      return { error: 'Email already registered' };
-    }
-    const profileId = createId();
-    const userId = createId();
-    const profile = {
-      id: profileId,
+    await connection.query(
+      'INSERT INTO profiles (id, full_name, role) VALUES (?, ?, ?)',
+      [userId, full_name, 'customer']
+    );
+  });
+
+  req.session.userId = userId;
+  ok(res, {
+    user: { id: userId, email },
+    profile: {
+      id: userId,
       full_name,
       phone: null,
       address: null,
       city: null,
       postal_code: null,
       role: 'customer',
-      created_at: now(),
-      updated_at: now(),
-    };
-    const user = {
-      id: userId,
-      email,
-      password,
-      profile_id: profileId,
-    };
-    store.profiles.push(profile);
-    store.users.push(user);
-    return { user, profile };
-  });
-
-  if (result?.error) {
-    fail(res, 400, result.error);
-    return;
-  }
-
-  req.session.userId = result.user.id;
-  ok(res, {
-    user: { id: result.user.id, email: result.user.email },
-    profile: result.profile,
+      created_at: null,
+      updated_at: null,
+    },
   });
 });
 
@@ -183,9 +232,11 @@ router.post('/auth/logout', (req, res) => {
 });
 
 router.get('/profile', requireAuth, async (req, res) => {
-  const store = await loadStore();
-  const user = store.users.find((entry) => entry.id === req.session.userId);
-  const profile = store.profiles.find((entry) => entry.id === user?.profile_id);
+  const [rows] = await query(
+    'SELECT id, full_name, phone, address, city, postal_code, role, created_at, updated_at FROM profiles WHERE id = ?',
+    [req.session.userId]
+  );
+  const profile = mapProfileRow(rows[0]);
   if (!profile) {
     fail(res, 404, 'Profile not found');
     return;
@@ -196,22 +247,23 @@ router.get('/profile', requireAuth, async (req, res) => {
 router.put('/profile', requireAuth, async (req, res) => {
   const fields = ['full_name', 'phone', 'address', 'city', 'postal_code'];
   const payload = req.body || {};
-  const updated = await updateStore((store) => {
-    const user = store.users.find((entry) => entry.id === req.session.userId);
-    const profile = store.profiles.find((entry) => entry.id === user?.profile_id);
-    if (!profile) {
-      return null;
-    }
-    fields.forEach((field) => {
-      if (Object.prototype.hasOwnProperty.call(payload, field)) {
-        profile[field] = payload[field];
-      }
-    });
-    profile.updated_at = now();
-    return profile;
-  });
+  const updates = fields
+    .filter((field) => Object.prototype.hasOwnProperty.call(payload, field))
+    .map((field) => ({ field, value: payload[field] }));
 
-  if (!updated) {
+  if (updates.length === 0) {
+    ok(res, true);
+    return;
+  }
+
+  const setClause = updates.map((item) => `${item.field} = ?`).join(', ');
+  const values = updates.map((item) => item.value);
+  const [result] = await query(
+    `UPDATE profiles SET ${setClause}, updated_at = NOW() WHERE id = ?`,
+    [...values, req.session.userId]
+  );
+
+  if (result.affectedRows === 0) {
     fail(res, 404, 'Profile not found');
     return;
   }
@@ -219,24 +271,51 @@ router.put('/profile', requireAuth, async (req, res) => {
 });
 
 router.get('/brands', async (_req, res) => {
-  const store = await loadStore();
-  ok(res, store.brands);
+  const [rows] = await query('SELECT id, name, description, logo_url, created_at FROM brands');
+  ok(res, rows);
 });
 
 router.get('/categories', async (_req, res) => {
-  const store = await loadStore();
-  ok(res, store.categories);
+  const [rows] = await query('SELECT id, name, description, created_at FROM categories');
+  ok(res, rows);
 });
 
 router.get('/products', async (req, res) => {
-  const store = await loadStore();
   const { id } = req.query;
+  const productSql = `SELECT
+      p.id AS product_id,
+      p.name AS product_name,
+      p.description AS product_description,
+      p.brand_id AS product_brand_id,
+      p.category_id AS product_category_id,
+      p.price AS product_price,
+      p.stock AS product_stock,
+      p.sizes AS product_sizes,
+      p.colors AS product_colors,
+      p.image_url AS product_image_url,
+      p.images AS product_images,
+      p.is_featured AS product_is_featured,
+      p.created_at AS product_created_at,
+      p.updated_at AS product_updated_at,
+      b.id AS brand_id,
+      b.name AS brand_name,
+      b.description AS brand_description,
+      b.logo_url AS brand_logo_url,
+      b.created_at AS brand_created_at,
+      c.id AS category_id,
+      c.name AS category_name,
+      c.description AS category_description,
+      c.created_at AS category_created_at
+    FROM products p
+    LEFT JOIN brands b ON p.brand_id = b.id
+    LEFT JOIN categories c ON p.category_id = c.id`;
   if (id) {
-    const product = store.products.find((entry) => entry.id === id);
-    ok(res, product ? withProductDetails(store, product) : null);
+    const [rows] = await query(`${productSql} WHERE p.id = ?`, [id]);
+    ok(res, rows.length ? mapProductRow(rows[0]) : null);
     return;
   }
-  ok(res, store.products.map((product) => withProductDetails(store, product)));
+  const [rows] = await query(productSql);
+  ok(res, rows.map((row) => mapProductRow(row)));
 });
 
 router.post('/products', async (req, res) => {
@@ -245,27 +324,27 @@ router.post('/products', async (req, res) => {
     fail(res, 400, 'Product name and price are required');
     return;
   }
-  const created = await updateStore((store) => {
-    const product = {
-      id: createId(),
-      name: payload.name,
-      description: payload.description || null,
-      brand_id: payload.brand_id || null,
-      category_id: payload.category_id || null,
-      price: payload.price,
-      stock: payload.stock ?? 0,
-      sizes: Array.isArray(payload.sizes) ? payload.sizes : [],
-      colors: Array.isArray(payload.colors) ? payload.colors : [],
-      image_url: payload.image_url || null,
-      images: Array.isArray(payload.images) ? payload.images : [],
-      is_featured: Boolean(payload.is_featured),
-      created_at: now(),
-      updated_at: now(),
-    };
-    store.products.push(product);
-    return product;
-  });
-  ok(res, { id: created.id });
+  const productId = randomUUID();
+  await query(
+    `INSERT INTO products
+      (id, name, description, brand_id, category_id, price, stock, sizes, colors, image_url, images, is_featured)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      productId,
+      payload.name,
+      payload.description || null,
+      payload.brand_id || null,
+      payload.category_id || null,
+      payload.price,
+      payload.stock ?? 0,
+      JSON.stringify(Array.isArray(payload.sizes) ? payload.sizes : []),
+      JSON.stringify(Array.isArray(payload.colors) ? payload.colors : []),
+      payload.image_url || null,
+      JSON.stringify(Array.isArray(payload.images) ? payload.images : []),
+      payload.is_featured ? 1 : 0,
+    ]
+  );
+  ok(res, { id: productId });
 });
 
 router.put('/products', async (req, res) => {
@@ -274,30 +353,39 @@ router.put('/products', async (req, res) => {
     fail(res, 400, 'Product id is required');
     return;
   }
-  const updated = await updateStore((store) => {
-    const product = store.products.find((entry) => entry.id === payload.id);
-    if (!product) {
-      return null;
-    }
-    Object.assign(product, {
-      name: payload.name ?? product.name,
-      description: payload.description ?? product.description,
-      brand_id: payload.brand_id ?? product.brand_id,
-      category_id: payload.category_id ?? product.category_id,
-      price: payload.price ?? product.price,
-      stock: payload.stock ?? product.stock,
-      sizes: Array.isArray(payload.sizes) ? payload.sizes : product.sizes,
-      colors: Array.isArray(payload.colors) ? payload.colors : product.colors,
-      image_url: payload.image_url ?? product.image_url,
-      images: Array.isArray(payload.images) ? payload.images : product.images,
-      is_featured:
-        typeof payload.is_featured === 'boolean' ? payload.is_featured : product.is_featured,
-      updated_at: now(),
-    });
-    return product;
-  });
+  const updates = [];
+  const values = [];
+  const addUpdate = (field, value) => {
+    updates.push(`${field} = ?`);
+    values.push(value);
+  };
 
-  if (!updated) {
+  if (payload.name !== undefined) addUpdate('name', payload.name);
+  if (payload.description !== undefined) addUpdate('description', payload.description);
+  if (payload.brand_id !== undefined) addUpdate('brand_id', payload.brand_id);
+  if (payload.category_id !== undefined) addUpdate('category_id', payload.category_id);
+  if (payload.price !== undefined) addUpdate('price', payload.price);
+  if (payload.stock !== undefined) addUpdate('stock', payload.stock);
+  if (payload.sizes !== undefined)
+    addUpdate('sizes', JSON.stringify(Array.isArray(payload.sizes) ? payload.sizes : []));
+  if (payload.colors !== undefined)
+    addUpdate('colors', JSON.stringify(Array.isArray(payload.colors) ? payload.colors : []));
+  if (payload.image_url !== undefined) addUpdate('image_url', payload.image_url);
+  if (payload.images !== undefined)
+    addUpdate('images', JSON.stringify(Array.isArray(payload.images) ? payload.images : []));
+  if (payload.is_featured !== undefined) addUpdate('is_featured', payload.is_featured ? 1 : 0);
+
+  if (updates.length === 0) {
+    ok(res, true);
+    return;
+  }
+
+  const [result] = await query(
+    `UPDATE products SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
+    [...values, payload.id]
+  );
+
+  if (result.affectedRows === 0) {
     fail(res, 404, 'Product not found');
     return;
   }
@@ -310,20 +398,8 @@ router.delete('/products', async (req, res) => {
     fail(res, 400, 'Product id is required');
     return;
   }
-  const removed = await updateStore((store) => {
-    const index = store.products.findIndex((entry) => entry.id === id);
-    if (index === -1) {
-      return false;
-    }
-    store.products.splice(index, 1);
-    store.cart_items = store.cart_items.filter((entry) => entry.product_id !== id);
-    store.wishlist_items = store.wishlist_items.filter((entry) => entry.product_id !== id);
-    store.order_items = store.order_items.map((entry) =>
-      entry.product_id === id ? { ...entry, product_id: null } : entry
-    );
-    return true;
-  });
-  if (!removed) {
+  const [result] = await query('DELETE FROM products WHERE id = ?', [id]);
+  if (result.affectedRows === 0) {
     fail(res, 404, 'Product not found');
     return;
   }
@@ -331,10 +407,55 @@ router.delete('/products', async (req, res) => {
 });
 
 router.get('/cart', requireAuth, async (req, res) => {
-  const store = await loadStore();
-  const items = store.cart_items
-    .filter((entry) => entry.user_id === req.session.userId)
-    .map((item) => withCartDetails(store, item));
+  const [rows] = await query(
+    `SELECT
+      ci.id,
+      ci.user_id,
+      ci.product_id AS item_product_id,
+      ci.quantity,
+      ci.size,
+      ci.color,
+      ci.created_at,
+      p.id AS product_id,
+      p.name AS product_name,
+      p.description AS product_description,
+      p.brand_id AS product_brand_id,
+      p.category_id AS product_category_id,
+      p.price AS product_price,
+      p.stock AS product_stock,
+      p.sizes AS product_sizes,
+      p.colors AS product_colors,
+      p.image_url AS product_image_url,
+      p.images AS product_images,
+      p.is_featured AS product_is_featured,
+      p.created_at AS product_created_at,
+      p.updated_at AS product_updated_at,
+      b.id AS brand_id,
+      b.name AS brand_name,
+      b.description AS brand_description,
+      b.logo_url AS brand_logo_url,
+      b.created_at AS brand_created_at,
+      c.id AS category_id,
+      c.name AS category_name,
+      c.description AS category_description,
+      c.created_at AS category_created_at
+    FROM cart_items ci
+    JOIN products p ON ci.product_id = p.id
+    LEFT JOIN brands b ON p.brand_id = b.id
+    LEFT JOIN categories c ON p.category_id = c.id
+    WHERE ci.user_id = ?`,
+    [req.session.userId]
+  );
+  const items = rows.map((row) => ({
+    id: row.id,
+    user_id: row.user_id,
+    product_id: row.item_product_id,
+    quantity: row.quantity,
+    size: row.size,
+    color: row.color,
+    created_at: row.created_at,
+    products: mapProductRow(row),
+  }));
   ok(res, items);
 });
 
@@ -344,39 +465,32 @@ router.post('/cart', requireAuth, async (req, res) => {
     fail(res, 400, 'Product, quantity, size, and color are required');
     return;
   }
-  const created = await updateStore((store) => {
-    const product = store.products.find((entry) => entry.id === product_id);
-    if (!product) {
-      return { error: 'Product not found' };
-    }
-    const existing = store.cart_items.find(
-      (entry) =>
-        entry.user_id === req.session.userId &&
-        entry.product_id === product_id &&
-        entry.size === size &&
-        entry.color === color
-    );
-    if (existing) {
-      existing.quantity += quantity;
-      return existing;
-    }
-    const item = {
-      id: createId(),
-      user_id: req.session.userId,
-      product_id,
-      quantity,
-      size,
-      color,
-      created_at: now(),
-    };
-    store.cart_items.push(item);
-    return item;
-  });
-
-  if (created?.error) {
-    fail(res, 404, created.error);
+  const [products] = await query('SELECT id FROM products WHERE id = ?', [product_id]);
+  if (products.length === 0) {
+    fail(res, 404, 'Product not found');
     return;
   }
+
+  const [existing] = await query(
+    `SELECT id, quantity
+     FROM cart_items
+     WHERE user_id = ? AND product_id = ? AND size = ? AND color = ?`,
+    [req.session.userId, product_id, size, color]
+  );
+
+  if (existing.length > 0) {
+    await query('UPDATE cart_items SET quantity = quantity + ? WHERE id = ?', [
+      quantity,
+      existing[0].id,
+    ]);
+    ok(res, true);
+    return;
+  }
+
+  await query(
+    'INSERT INTO cart_items (id, user_id, product_id, quantity, size, color) VALUES (?, ?, ?, ?, ?, ?)',
+    [randomUUID(), req.session.userId, product_id, quantity, size, color]
+  );
   ok(res, true);
 });
 
@@ -386,17 +500,11 @@ router.put('/cart', requireAuth, async (req, res) => {
     fail(res, 400, 'Cart item id and quantity are required');
     return;
   }
-  const updated = await updateStore((store) => {
-    const item = store.cart_items.find(
-      (entry) => entry.id === id && entry.user_id === req.session.userId
-    );
-    if (!item) {
-      return null;
-    }
-    item.quantity = Math.max(1, quantity);
-    return item;
-  });
-  if (!updated) {
+  const [result] = await query(
+    'UPDATE cart_items SET quantity = ? WHERE id = ? AND user_id = ?',
+    [Math.max(1, quantity), id, req.session.userId]
+  );
+  if (result.affectedRows === 0) {
     fail(res, 404, 'Cart item not found');
     return;
   }
@@ -405,23 +513,16 @@ router.put('/cart', requireAuth, async (req, res) => {
 
 router.delete('/cart', requireAuth, async (req, res) => {
   const { id, clear_all } = req.body || {};
-  const removed = await updateStore((store) => {
-    if (clear_all) {
-      store.cart_items = store.cart_items.filter(
-        (entry) => entry.user_id !== req.session.userId
-      );
-      return true;
-    }
-    const index = store.cart_items.findIndex(
-      (entry) => entry.id === id && entry.user_id === req.session.userId
-    );
-    if (index === -1) {
-      return false;
-    }
-    store.cart_items.splice(index, 1);
-    return true;
-  });
-  if (!removed) {
+  if (clear_all) {
+    await query('DELETE FROM cart_items WHERE user_id = ?', [req.session.userId]);
+    ok(res, true);
+    return;
+  }
+  const [result] = await query('DELETE FROM cart_items WHERE id = ? AND user_id = ?', [
+    id,
+    req.session.userId,
+  ]);
+  if (result.affectedRows === 0) {
     fail(res, 404, 'Cart item not found');
     return;
   }
@@ -429,13 +530,49 @@ router.delete('/cart', requireAuth, async (req, res) => {
 });
 
 router.get('/wishlist', requireAuth, async (req, res) => {
-  const store = await loadStore();
-  const items = store.wishlist_items
-    .filter((entry) => entry.user_id === req.session.userId)
-    .map((item) => ({
-      ...item,
-      products: store.products.find((product) => product.id === item.product_id) || null,
-    }));
+  const [rows] = await query(
+    `SELECT
+      w.id,
+      w.user_id,
+      w.product_id AS item_product_id,
+      w.created_at,
+      p.id AS product_id,
+      p.name AS product_name,
+      p.description AS product_description,
+      p.brand_id AS product_brand_id,
+      p.category_id AS product_category_id,
+      p.price AS product_price,
+      p.stock AS product_stock,
+      p.sizes AS product_sizes,
+      p.colors AS product_colors,
+      p.image_url AS product_image_url,
+      p.images AS product_images,
+      p.is_featured AS product_is_featured,
+      p.created_at AS product_created_at,
+      p.updated_at AS product_updated_at,
+      b.id AS brand_id,
+      b.name AS brand_name,
+      b.description AS brand_description,
+      b.logo_url AS brand_logo_url,
+      b.created_at AS brand_created_at,
+      c.id AS category_id,
+      c.name AS category_name,
+      c.description AS category_description,
+      c.created_at AS category_created_at
+    FROM wishlist w
+    JOIN products p ON w.product_id = p.id
+    LEFT JOIN brands b ON p.brand_id = b.id
+    LEFT JOIN categories c ON p.category_id = c.id
+    WHERE w.user_id = ?`,
+    [req.session.userId]
+  );
+  const items = rows.map((row) => ({
+    id: row.id,
+    user_id: row.user_id,
+    product_id: row.item_product_id,
+    created_at: row.created_at,
+    products: mapProductRow(row),
+  }));
   ok(res, items);
 });
 
@@ -445,30 +582,24 @@ router.post('/wishlist', requireAuth, async (req, res) => {
     fail(res, 400, 'Product id is required');
     return;
   }
-  const created = await updateStore((store) => {
-    const product = store.products.find((entry) => entry.id === product_id);
-    if (!product) {
-      return { error: 'Product not found' };
-    }
-    const existing = store.wishlist_items.find(
-      (entry) => entry.user_id === req.session.userId && entry.product_id === product_id
-    );
-    if (existing) {
-      return { error: 'Item already in wishlist' };
-    }
-    const item = {
-      id: createId(),
-      user_id: req.session.userId,
-      product_id,
-      created_at: now(),
-    };
-    store.wishlist_items.push(item);
-    return item;
-  });
-  if (created?.error) {
-    fail(res, 400, created.error);
+  const [products] = await query('SELECT id FROM products WHERE id = ?', [product_id]);
+  if (products.length === 0) {
+    fail(res, 404, 'Product not found');
     return;
   }
+  const [existing] = await query(
+    'SELECT id FROM wishlist WHERE user_id = ? AND product_id = ?',
+    [req.session.userId, product_id]
+  );
+  if (existing.length > 0) {
+    fail(res, 400, 'Item already in wishlist');
+    return;
+  }
+  await query('INSERT INTO wishlist (id, user_id, product_id) VALUES (?, ?, ?)', [
+    randomUUID(),
+    req.session.userId,
+    product_id,
+  ]);
   ok(res, true);
 });
 
@@ -478,17 +609,11 @@ router.delete('/wishlist', requireAuth, async (req, res) => {
     fail(res, 400, 'Wishlist id is required');
     return;
   }
-  const removed = await updateStore((store) => {
-    const index = store.wishlist_items.findIndex(
-      (entry) => entry.id === id && entry.user_id === req.session.userId
-    );
-    if (index === -1) {
-      return false;
-    }
-    store.wishlist_items.splice(index, 1);
-    return true;
-  });
-  if (!removed) {
+  const [result] = await query('DELETE FROM wishlist WHERE id = ? AND user_id = ?', [
+    id,
+    req.session.userId,
+  ]);
+  if (result.affectedRows === 0) {
     fail(res, 404, 'Wishlist item not found');
     return;
   }
@@ -496,15 +621,85 @@ router.delete('/wishlist', requireAuth, async (req, res) => {
 });
 
 router.get('/orders', requireAuth, async (req, res) => {
-  const store = await loadStore();
-  const user = store.users.find((entry) => entry.id === req.session.userId);
-  const profile = store.profiles.find((entry) => entry.id === user?.profile_id);
-  const orders = store.orders.filter((order) =>
-    profile?.role === 'admin' || profile?.role === 'super_admin'
-      ? true
-      : order.user_id === req.session.userId
+  const [roles] = await query('SELECT role FROM profiles WHERE id = ?', [req.session.userId]);
+  const isAdmin = ['admin', 'super_admin'].includes(roles[0]?.role);
+  const [orders] = await query(
+    `SELECT * FROM orders ${isAdmin ? '' : 'WHERE user_id = ?'}`,
+    isAdmin ? [] : [req.session.userId]
   );
-  ok(res, orders.map((order) => withOrderDetails(store, order)));
+
+  if (orders.length === 0) {
+    ok(res, []);
+    return;
+  }
+
+  const orderIds = orders.map((order) => order.id);
+  const [items] = await query(
+    `SELECT
+      oi.id,
+      oi.order_id,
+      oi.product_id AS item_product_id,
+      oi.quantity,
+      oi.size,
+      oi.color,
+      oi.price,
+      oi.created_at,
+      p.id AS product_id,
+      p.name AS product_name,
+      p.description AS product_description,
+      p.brand_id AS product_brand_id,
+      p.category_id AS product_category_id,
+      p.price AS product_price,
+      p.stock AS product_stock,
+      p.sizes AS product_sizes,
+      p.colors AS product_colors,
+      p.image_url AS product_image_url,
+      p.images AS product_images,
+      p.is_featured AS product_is_featured,
+      p.created_at AS product_created_at,
+      p.updated_at AS product_updated_at,
+      b.id AS brand_id,
+      b.name AS brand_name,
+      b.description AS brand_description,
+      b.logo_url AS brand_logo_url,
+      b.created_at AS brand_created_at,
+      c.id AS category_id,
+      c.name AS category_name,
+      c.description AS category_description,
+      c.created_at AS category_created_at
+    FROM order_items oi
+    LEFT JOIN products p ON oi.product_id = p.id
+    LEFT JOIN brands b ON p.brand_id = b.id
+    LEFT JOIN categories c ON p.category_id = c.id
+    WHERE oi.order_id IN (?)`,
+    [orderIds]
+  );
+
+  const itemsByOrder = items.reduce((acc, item) => {
+    if (!acc[item.order_id]) {
+      acc[item.order_id] = [];
+    }
+    acc[item.order_id].push({
+      id: item.id,
+      order_id: item.order_id,
+      product_id: item.item_product_id,
+      quantity: item.quantity,
+      size: item.size,
+      color: item.color,
+      price: Number(item.price),
+      created_at: item.created_at,
+      products: mapProductRow(item),
+    });
+    return acc;
+  }, {});
+
+  const result = orders.map((order) => ({
+    ...order,
+    total_amount: Number(order.total_amount),
+    shipping_cost: Number(order.shipping_cost),
+    order_items: itemsByOrder[order.id] || [],
+  }));
+  ok(res, result);
 });
 
 router.post('/orders', requireAuth, async (req, res) => {
@@ -513,41 +708,48 @@ router.post('/orders', requireAuth, async (req, res) => {
     fail(res, 400, 'Order number and items are required');
     return;
   }
-  const created = await updateStore((store) => {
-    const orderId = createId();
-    const order = {
-      id: orderId,
-      user_id: req.session.userId,
-      order_number: payload.order_number,
-      status: payload.status || 'pending',
-      total_amount: payload.total_amount || 0,
-      shipping_address: payload.shipping_address || '',
-      shipping_city: payload.shipping_city || '',
-      shipping_postal_code: payload.shipping_postal_code || '',
-      shipping_method: payload.shipping_method || '',
-      shipping_cost: payload.shipping_cost || 0,
-      tracking_number: payload.tracking_number || null,
-      notes: payload.notes || null,
-      created_at: now(),
-      updated_at: now(),
-    };
-    store.orders.push(order);
-    payload.items.forEach((item) => {
-      store.order_items.push({
-        id: createId(),
-        order_id: orderId,
-        product_id: item.product_id,
-        quantity: item.quantity,
-        size: item.size,
-        color: item.color,
-        price: item.price,
-        created_at: now(),
-      });
-    });
-    store.cart_items = store.cart_items.filter((entry) => entry.user_id !== req.session.userId);
-    return order;
+  const orderId = randomUUID();
+  await withTransaction(async (connection) => {
+    await connection.query(
+      `INSERT INTO orders
+        (id, user_id, order_number, status, total_amount, shipping_address, shipping_city,
+         shipping_postal_code, shipping_method, shipping_cost, tracking_number, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        orderId,
+        req.session.userId,
+        payload.order_number,
+        payload.status || 'pending',
+        payload.total_amount || 0,
+        payload.shipping_address || '',
+        payload.shipping_city || '',
+        payload.shipping_postal_code || '',
+        payload.shipping_method || '',
+        payload.shipping_cost || 0,
+        payload.tracking_number || null,
+        payload.notes || null,
+      ]
+    );
+
+    for (const item of payload.items) {
+      await connection.query(
+        `INSERT INTO order_items (id, order_id, product_id, quantity, size, color, price)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          randomUUID(),
+          orderId,
+          item.product_id,
+          item.quantity,
+          item.size,
+          item.color,
+          item.price,
+        ]
+      );
+    }
+
+    await connection.query('DELETE FROM cart_items WHERE user_id = ?', [req.session.userId]);
   });
-  ok(res, { id: created.id });
+  ok(res, { id: orderId });
 });
 
 router.put('/orders', requireAuth, requireAdmin, async (req, res) => {
@@ -556,21 +758,25 @@ router.put('/orders', requireAuth, requireAdmin, async (req, res) => {
     fail(res, 400, 'Order id is required');
     return;
   }
-  const updated = await updateStore((store) => {
-    const order = store.orders.find((entry) => entry.id === id);
-    if (!order) {
-      return null;
-    }
-    if (status) {
-      order.status = status;
-    }
-    if (tracking_number !== undefined) {
-      order.tracking_number = tracking_number;
-    }
-    order.updated_at = now();
-    return order;
-  });
-  if (!updated) {
+  const updates = [];
+  const values = [];
+  if (status) {
+    updates.push('status = ?');
+    values.push(status);
+  }
+  if (tracking_number !== undefined) {
+    updates.push('tracking_number = ?');
+    values.push(tracking_number);
+  }
+  if (updates.length === 0) {
+    ok(res, true);
+    return;
+  }
+  const [result] = await query(
+    `UPDATE orders SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
+    [...values, id]
+  );
+  if (result.affectedRows === 0) {
     fail(res, 404, 'Order not found');
     return;
   }
@@ -578,19 +784,25 @@ router.put('/orders', requireAuth, requireAdmin, async (req, res) => {
 });
 
 router.get('/admin/summary', requireAuth, requireAdmin, async (_req, res) => {
-  const store = await loadStore();
-  const totalRevenue = store.orders.reduce((sum, order) => sum + order.total_amount, 0);
+  const [[totalProducts]] = await query('SELECT COUNT(*) AS totalProducts FROM products');
+  const [[totalOrders]] = await query('SELECT COUNT(*) AS totalOrders FROM orders');
+  const [[totalUsers]] = await query('SELECT COUNT(*) AS totalUsers FROM profiles');
+  const [[totalRevenue]] = await query(
+    'SELECT COALESCE(SUM(total_amount), 0) AS totalRevenue FROM orders'
+  );
   ok(res, {
-    totalProducts: store.products.length,
-    totalOrders: store.orders.length,
-    totalUsers: store.profiles.length,
-    totalRevenue,
+    totalProducts: totalProducts.totalProducts,
+    totalOrders: totalOrders.totalOrders,
+    totalUsers: totalUsers.totalUsers,
+    totalRevenue: Number(totalRevenue.totalRevenue),
   });
 });
 
 router.get('/admin/users', requireAuth, requireAdmin, async (_req, res) => {
-  const store = await loadStore();
-  ok(res, store.profiles);
+  const [rows] = await query(
+    'SELECT id, full_name, phone, address, city, postal_code, role, created_at, updated_at FROM profiles'
+  );
+  ok(res, rows);
 });
 
 router.put('/admin/users', requireAuth, requireAdmin, async (req, res) => {
@@ -599,16 +811,11 @@ router.put('/admin/users', requireAuth, requireAdmin, async (req, res) => {
     fail(res, 400, 'User id and role are required');
     return;
   }
-  const updated = await updateStore((store) => {
-    const profile = store.profiles.find((entry) => entry.id === id);
-    if (!profile) {
-      return null;
-    }
-    profile.role = role;
-    profile.updated_at = now();
-    return profile;
-  });
-  if (!updated) {
+  const [result] = await query('UPDATE profiles SET role = ?, updated_at = NOW() WHERE id = ?', [
+    role,
+    id,
+  ]);
+  if (result.affectedRows === 0) {
     fail(res, 404, 'User not found');
     return;
   }
@@ -616,60 +823,59 @@ router.put('/admin/users', requireAuth, requireAdmin, async (req, res) => {
 });
 
 router.get('/admin/reports', requireAuth, requireAdmin, async (_req, res) => {
-  const store = await loadStore();
-  const totalRevenue = store.orders.reduce((sum, order) => sum + order.total_amount, 0);
-  const totalOrders = store.orders.length;
-  const totalProducts = store.products.length;
-  const totalUsers = store.profiles.length;
+  const [[totalRevenue]] = await query(
+    'SELECT COALESCE(SUM(total_amount), 0) AS totalRevenue FROM orders'
+  );
+  const [[totalOrders]] = await query('SELECT COUNT(*) AS totalOrders FROM orders');
+  const [[totalProducts]] = await query('SELECT COUNT(*) AS totalProducts FROM products');
+  const [[totalUsers]] = await query('SELECT COUNT(*) AS totalUsers FROM profiles');
 
-  const revenueByMonth = store.orders.reduce((acc, order) => {
-    const month = order.created_at.slice(0, 7);
-    acc[month] = (acc[month] || 0) + order.total_amount;
-    return acc;
-  }, {});
+  const [revenueByMonth] = await query(
+    `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month,
+      COALESCE(SUM(total_amount), 0) AS revenue
+     FROM orders
+     GROUP BY month
+     ORDER BY month`
+  );
 
-  const productSales = store.order_items.reduce((acc, item) => {
-    if (!item.product_id) {
-      return acc;
-    }
-    acc[item.product_id] = acc[item.product_id] || { sales: 0, revenue: 0 };
-    acc[item.product_id].sales += item.quantity;
-    acc[item.product_id].revenue += item.price * item.quantity;
-    return acc;
-  }, {});
+  const [topProducts] = await query(
+    `SELECT COALESCE(p.name, 'Unknown') AS name,
+      SUM(oi.quantity) AS sales,
+      SUM(oi.price * oi.quantity) AS revenue
+     FROM order_items oi
+     LEFT JOIN products p ON oi.product_id = p.id
+     WHERE oi.product_id IS NOT NULL
+     GROUP BY oi.product_id
+     ORDER BY revenue DESC
+     LIMIT 5`
+  );
 
-  const topProducts = Object.entries(productSales)
-    .map(([productId, stats]) => {
-      const product = store.products.find((entry) => entry.id === productId);
-      return {
-        name: product?.name || 'Unknown',
-        sales: stats.sales,
-        revenue: stats.revenue,
-      };
-    })
-    .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 5);
-
-  const recentOrders = [...store.orders]
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, 5)
-    .map((order) => ({
-      order_number: order.order_number,
-      total_amount: order.total_amount,
-      created_at: order.created_at,
-    }));
+  const [recentOrders] = await query(
+    `SELECT order_number, total_amount, created_at
+     FROM orders
+     ORDER BY created_at DESC
+     LIMIT 5`
+  );
 
   ok(res, {
-    totalRevenue,
-    totalOrders,
-    totalProducts,
-    totalUsers,
-    revenueByMonth: Object.entries(revenueByMonth).map(([month, revenue]) => ({
-      month,
-      revenue,
+    totalRevenue: Number(totalRevenue.totalRevenue),
+    totalOrders: totalOrders.totalOrders,
+    totalProducts: totalProducts.totalProducts,
+    totalUsers: totalUsers.totalUsers,
+    revenueByMonth: revenueByMonth.map((row) => ({
+      month: row.month,
+      revenue: Number(row.revenue),
     })),
-    topProducts,
-    recentOrders,
+    topProducts: topProducts.map((row) => ({
+      name: row.name,
+      sales: Number(row.sales),
+      revenue: Number(row.revenue),
+    })),
+    recentOrders: recentOrders.map((order) => ({
+      order_number: order.order_number,
+      total_amount: Number(order.total_amount),
+      created_at: order.created_at,
+    })),
   });
 });
 

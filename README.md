@@ -77,6 +77,7 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
      ```bash
      npm install
      ```
+   - Import schema database MySQL dari `databse/schema.sql` ke MySQL (XAMPP/phpMyAdmin).
    - Pastikan konfigurasi database ada di `api/.env`:
      ```bash
      PORT=4000
