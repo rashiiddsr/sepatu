@@ -1,10 +1,12 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ShopProvider } from './contexts/ShopContext';
 import Navbar from './components/Navbar';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Home from './pages/Home';
+import Products from './pages/Products';
 import ProductDetail from './pages/ProductDetail';
 import Cart from './pages/Cart';
 import Wishlist from './pages/Wishlist';
@@ -12,6 +14,7 @@ import Dashboard from './pages/Dashboard';
 import Checkout from './pages/Checkout';
 
 import AdminLayout from './pages/admin/AdminLayout';
+import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import ProductManagement from './pages/admin/ProductManagement';
 import UserManagement from './pages/admin/UserManagement';
@@ -46,7 +49,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return isAdmin() ? <>{children}</> : <Navigate to="/" />;
+  return isAdmin() ? <>{children}</> : <Navigate to="/admin/login" />;
 }
 
 function App() {
@@ -63,58 +66,59 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
 
-            <Route
-              path="/cart"
-              element={
-                <ProtectedRoute>
-                  <Cart />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wishlist"
-              element={
-                <ProtectedRoute>
-                  <Wishlist />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/checkout"
-              element={
-                <ProtectedRoute>
-                  <Checkout />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/cart"
+                element={
+                  <ProtectedRoute>
+                    <Cart />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/wishlist"
+                element={
+                  <ProtectedRoute>
+                    <Wishlist />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/checkout"
+                element={
+                  <ProtectedRoute>
+                    <Checkout />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin"
-              element={
-                <AdminRoute>
-                  <AdminLayout />
-                </AdminRoute>
-              }
-            >
-              <Route index element={<AdminDashboard />} />
-              <Route path="products" element={<ProductManagement />} />
-              <Route path="brands" element={<BrandManagement />} />
-              <Route path="categories" element={<CategoryManagement />} />
-              <Route path="tags" element={<TagManagement />} />
-              <Route path="users" element={<UserManagement />} />
-              <Route path="orders" element={<OrderManagement />} />
-              <Route path="reports" element={<Reports />} />
-            </Route>
-          </Routes>
-        </div>
+              <Route
+                path="/admin"
+                element={
+                  <AdminRoute>
+                    <AdminLayout />
+                  </AdminRoute>
+                }
+              >
+                <Route index element={<AdminDashboard />} />
+                <Route path="products" element={<ProductManagement />} />
+                <Route path="brands" element={<BrandManagement />} />
+                <Route path="categories" element={<CategoryManagement />} />
+                <Route path="tags" element={<TagManagement />} />
+                <Route path="users" element={<UserManagement />} />
+                <Route path="orders" element={<OrderManagement />} />
+                <Route path="reports" element={<Reports />} />
+              </Route>
+            </Routes>
+          </div>
+        </ShopProvider>
       </AuthProvider>
     </Router>
   );
