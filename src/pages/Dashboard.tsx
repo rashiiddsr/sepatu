@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Package, MapPin, Save } from 'lucide-react';
+import { Package, User, Heart, ShoppingBag } from 'lucide-react';
 import type { OrderWithItems } from '../types/database';
+import { api } from '../lib/api';
 
 export default function Dashboard() {
   const { user, profile, refreshProfile } = useAuth();
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'profile' | 'orders'>('profile');
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'orders' | 'profile'>('orders');
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -19,54 +17,44 @@ export default function Dashboard() {
   const [postalCode, setPostalCode] = useState('');
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
-
     if (profile) {
-      setFullName(profile.full_name);
+      setFullName(profile.full_name || '');
       setPhone(profile.phone || '');
       setAddress(profile.address || '');
       setCity(profile.city || '');
       setPostalCode(profile.postal_code || '');
     }
+  }, [profile]);
 
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     fetchOrders();
-  }, [user, profile]);
+  }, [user]);
 
   const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*, order_items(*, products(*))')
-      .eq('user_id', user!.id)
-      .order('created_at', { ascending: false });
-
-    if (data) setOrders(data as unknown as OrderWithItems[]);
+    if (!user) return;
+    const data = await api.getOrders();
+    setOrders(data);
+    setLoading(false);
   };
 
-  const updateProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    const { error } = await supabase
-      .from('profiles')
-      .update({
+  const updateProfile = async () => {
+    try {
+      await api.updateProfile({
         full_name: fullName,
         phone,
         address,
         city,
         postal_code: postalCode,
-      })
-      .eq('id', user!.id);
-
-    if (error) {
-      alert('Failed to update profile');
-    } else {
+      });
       await refreshProfile();
-      alert('Profile updated successfully!');
+      alert('Profile updated successfully');
+    } catch (error) {
+      alert('Failed to update profile');
     }
-    setLoading(false);
   };
 
   const getStatusColor = (status: string) => {
@@ -80,48 +68,109 @@ export default function Dashboard() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-3xl font-bold text-slate-900 mb-8">My Dashboard</h1>
+        <div className="bg-white rounded-2xl shadow-sm p-6 mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Welcome back!</h1>
+          <p className="text-slate-600">Manage your orders and account settings</p>
+        </div>
 
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="border-b border-slate-200">
-            <div className="flex">
-              <button
-                onClick={() => setActiveTab('profile')}
-                className={`px-6 py-4 font-medium transition ${
-                  activeTab === 'profile'
-                    ? 'border-b-2 border-slate-900 text-slate-900'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <User className="w-5 h-5" />
-                  <span>Profile</span>
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('orders')}
-                className={`px-6 py-4 font-medium transition ${
-                  activeTab === 'orders'
-                    ? 'border-b-2 border-slate-900 text-slate-900'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div className="space-y-2">
+                <button
+                  onClick={() => setActiveTab('orders')}
+                  className={`w-full text-left px-4 py-3 rounded-lg flex items-center space-x-3 transition ${
+                    activeTab === 'orders'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
                   <Package className="w-5 h-5" />
                   <span>Orders</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('profile')}
+                  className={`w-full text-left px-4 py-3 rounded-lg flex items-center space-x-3 transition ${
+                    activeTab === 'profile'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <User className="w-5 h-5" />
+                  <span>Profile</span>
+                </button>
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-slate-200">
+                <div className="flex items-center space-x-3 text-slate-600">
+                  <ShoppingBag className="w-5 h-5" />
+                  <span>{orders.length} Orders</span>
                 </div>
-              </button>
+              </div>
             </div>
           </div>
 
-          <div className="p-8">
-            {activeTab === 'profile' && (
-              <div className="max-w-2xl">
-                <h2 className="text-2xl font-bold text-slate-900 mb-6">Profile Information</h2>
-                <form onSubmit={updateProfile} className="space-y-6">
+          <div className="lg:col-span-3">
+            {activeTab === 'orders' ? (
+              <div className="space-y-6">
+                {orders.length === 0 ? (
+                  <div className="bg-white rounded-xl p-12 text-center">
+                    <Heart className="w-16 h-16 text-slate-400 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-slate-900 mb-2">No orders yet</h3>
+                    <p className="text-slate-600">Start shopping to see your orders here</p>
+                  </div>
+                ) : (
+                  orders.map((order) => (
+                    <div key={order.id} className="bg-white rounded-xl p-6 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-slate-900">
+                            Order #{order.order_number}
+                          </h3>
+                          <p className="text-slate-600 text-sm">
+                            {new Date(order.created_at).toLocaleDateString('id-ID')}
+                          </p>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.status)}`}>
+                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3 mb-4">
+                        {order.order_items.map((item) => (
+                          <div key={item.id} className="flex justify-between items-center text-sm">
+                            <span>{item.products?.name} x{item.quantity}</span>
+                            <span>Rp {(item.price * item.quantity).toLocaleString('id-ID')}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="border-t border-slate-200 pt-4 flex justify-between items-center">
+                        <span className="font-medium text-slate-900">Total</span>
+                        <span className="text-lg font-bold text-slate-900">
+                          Rp {order.total_amount.toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl p-6 shadow-sm">
+                <h2 className="text-2xl font-bold text-slate-900 mb-6">Profile Settings</h2>
+
+                <div className="space-y-6">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       Full Name
@@ -130,22 +179,8 @@ export default function Dashboard() {
                       type="text"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      required
                       className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                     />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={user?.email || ''}
-                      disabled
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg bg-slate-50 text-slate-500"
-                    />
-                    <p className="text-sm text-slate-500 mt-1">Email cannot be changed</p>
                   </div>
 
                   <div>
@@ -153,7 +188,7 @@ export default function Dashboard() {
                       Phone Number
                     </label>
                     <input
-                      type="tel"
+                      type="text"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
@@ -198,87 +233,12 @@ export default function Dashboard() {
                   </div>
 
                   <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex items-center space-x-2 bg-slate-900 text-white px-6 py-3 rounded-lg hover:bg-slate-800 transition disabled:opacity-50"
+                    onClick={updateProfile}
+                    className="bg-slate-900 text-white px-6 py-3 rounded-lg font-medium hover:bg-slate-800 transition"
                   >
-                    <Save className="w-5 h-5" />
-                    <span>{loading ? 'Saving...' : 'Save Changes'}</span>
+                    Update Profile
                   </button>
-                </form>
-              </div>
-            )}
-
-            {activeTab === 'orders' && (
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-6">Order History</h2>
-                {orders.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Package className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-                    <p className="text-slate-600">No orders yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {orders.map((order) => (
-                      <div key={order.id} className="border border-slate-200 rounded-xl p-6">
-                        <div className="flex justify-between items-start mb-4">
-                          <div>
-                            <h3 className="font-semibold text-slate-900 text-lg">
-                              Order #{order.order_number}
-                            </h3>
-                            <p className="text-slate-600 text-sm mt-1">
-                              {new Date(order.created_at).toLocaleDateString('id-ID', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                              })}
-                            </p>
-                          </div>
-                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.status)}`}>
-                            {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                          </span>
-                        </div>
-
-                        <div className="space-y-3 mb-4">
-                          {order.order_items.map((item) => (
-                            <div key={item.id} className="flex items-center space-x-4">
-                              <img
-                                src={item.products?.image_url || 'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=100'}
-                                alt={item.products?.name}
-                                className="w-16 h-16 object-cover rounded-lg"
-                              />
-                              <div className="flex-1">
-                                <p className="font-medium text-slate-900">{item.products?.name}</p>
-                                <p className="text-sm text-slate-600">
-                                  {item.quantity}x | Size: {item.size} | Color: {item.color}
-                                </p>
-                              </div>
-                              <span className="font-medium text-slate-900">
-                                Rp {(item.price * item.quantity).toLocaleString('id-ID')}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="border-t border-slate-200 pt-4 flex justify-between items-center">
-                          <div className="flex items-center space-x-2 text-slate-600">
-                            <MapPin className="w-4 h-4" />
-                            <span className="text-sm">{order.shipping_city}</span>
-                            {order.tracking_number && (
-                              <span className="text-sm">| Tracking: {order.tracking_number}</span>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm text-slate-600">Total Amount</p>
-                            <p className="text-xl font-bold text-slate-900">
-                              Rp {order.total_amount.toLocaleString('id-ID')}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                </div>
               </div>
             )}
           </div>

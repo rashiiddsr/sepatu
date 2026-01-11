@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import type { ProductWithDetails, Brand, Category } from '../types/database';
 import { Search, Filter, Heart, ShoppingCart } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
 
 export default function Home() {
   const [products, setProducts] = useState<ProductWithDetails[]>([]);
@@ -23,19 +23,18 @@ export default function Home() {
 
   const fetchData = async () => {
     setLoading(true);
-    const [productsRes, brandsRes, categoriesRes] = await Promise.all([
-      supabase
-        .from('products')
-        .select('*, brands(*), categories(*)')
-        .order('created_at', { ascending: false }),
-      supabase.from('brands').select('*').order('name'),
-      supabase.from('categories').select('*').order('name'),
-    ]);
-
-    if (productsRes.data) setProducts(productsRes.data);
-    if (brandsRes.data) setBrands(brandsRes.data);
-    if (categoriesRes.data) setCategories(categoriesRes.data);
-    setLoading(false);
+    try {
+      const [productsData, brandsData, categoriesData] = await Promise.all([
+        api.getProducts(),
+        api.getBrands(),
+        api.getCategories(),
+      ]);
+      setProducts(productsData);
+      setBrands(brandsData);
+      setCategories(categoriesData);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredProducts = products.filter((product) => {
@@ -58,18 +57,15 @@ export default function Home() {
       return;
     }
 
-    const { error } = await supabase
-      .from('wishlist')
-      .insert({ user_id: user.id, product_id: productId });
-
-    if (error) {
-      if (error.code === '23505') {
+    try {
+      await api.addWishlistItem(productId);
+      alert('Added to wishlist!');
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('already')) {
         alert('Item already in wishlist');
       } else {
         alert('Failed to add to wishlist');
       }
-    } else {
-      alert('Added to wishlist!');
     }
   };
 
@@ -216,80 +212,91 @@ export default function Home() {
             </div>
           </aside>
 
-          <main className="flex-1">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-slate-900">
-                {filteredProducts.length} Products Found
-              </h2>
-            </div>
-
+          <div className="flex-1">
             {loading ? (
-              <div className="text-center py-12">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
+              <div className="flex items-center justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900"></div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredProducts.map((product) => (
-                  <div key={product.id} className="bg-white rounded-xl shadow-sm overflow-hidden group hover:shadow-lg transition">
-                    <Link to={`/products/${product.id}`}>
-                      <div className="relative aspect-square overflow-hidden bg-slate-100">
-                        <img
-                          src={product.image_url || 'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=400'}
-                          alt={product.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                        />
-                        {product.is_featured && (
-                          <span className="absolute top-3 left-3 bg-slate-900 text-white px-3 py-1 rounded-full text-xs font-medium">
-                            Featured
-                          </span>
-                        )}
-                      </div>
-                    </Link>
-                    <div className="p-4">
-                      <div className="mb-2">
-                        <span className="text-xs font-medium text-slate-500">
-                          {product.brands?.name}
-                        </span>
-                      </div>
-                      <Link to={`/products/${product.id}`}>
-                        <h3 className="font-semibold text-slate-900 mb-2 hover:text-slate-700 transition">
-                          {product.name}
-                        </h3>
-                      </Link>
-                      <p className="text-slate-600 text-sm mb-3 line-clamp-2">
-                        {product.description}
-                      </p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xl font-bold text-slate-900">
-                          Rp {product.price.toLocaleString('id-ID')}
-                        </span>
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => addToWishlist(product.id)}
-                            className="p-2 hover:bg-slate-100 rounded-lg transition"
-                          >
-                            <Heart className="w-5 h-5 text-slate-600" />
-                          </button>
-                          <Link
-                            to={`/products/${product.id}`}
-                            className="p-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg transition"
-                          >
-                            <ShoppingCart className="w-5 h-5" />
+              <>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-slate-900">
+                    Products ({filteredProducts.length})
+                  </h2>
+                </div>
+
+                {filteredProducts.length === 0 ? (
+                  <div className="text-center py-20">
+                    <p className="text-slate-500">No products found</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {filteredProducts.map((product) => (
+                      <div key={product.id} className="bg-white rounded-xl shadow-sm overflow-hidden group">
+                        <div className="relative">
+                          <Link to={`/product/${product.id}`}>
+                            <img
+                              src={product.image_url || 'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=600'}
+                              alt={product.name}
+                              className="w-full h-64 object-cover group-hover:scale-105 transition duration-300"
+                            />
                           </Link>
+                          <div className="absolute top-4 right-4 flex flex-col space-y-2">
+                            <button
+                              onClick={() => addToWishlist(product.id)}
+                              className="p-2 bg-white rounded-full shadow-md hover:bg-slate-50 transition"
+                            >
+                              <Heart className="w-5 h-5 text-slate-700" />
+                            </button>
+                            <Link
+                              to={`/product/${product.id}`}
+                              className="p-2 bg-white rounded-full shadow-md hover:bg-slate-50 transition"
+                            >
+                              <ShoppingCart className="w-5 h-5 text-slate-700" />
+                            </Link>
+                          </div>
+                        </div>
+                        <div className="p-6">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm text-slate-500">
+                              {product.brands?.name}
+                            </span>
+                            {product.is_featured && (
+                              <span className="text-xs font-medium bg-slate-900 text-white px-2 py-1 rounded-full">
+                                Featured
+                              </span>
+                            )}
+                          </div>
+                          <Link
+                            to={`/product/${product.id}`}
+                            className="block"
+                          >
+                            <h3 className="text-lg font-semibold text-slate-900 mb-2 hover:text-slate-700 transition">
+                              {product.name}
+                            </h3>
+                          </Link>
+                          <p className="text-slate-600 text-sm mb-4 line-clamp-2">
+                            {product.description}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xl font-bold text-slate-900">
+                              Rp {product.price.toLocaleString('id-ID')}
+                            </span>
+                            <Link
+                              to={`/product/${product.id}`}
+                              className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition"
+                            >
+                              View Details
+                            </Link>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
-
-            {!loading && filteredProducts.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-slate-500 text-lg">No products found matching your filters</p>
-              </div>
-            )}
-          </main>
+          </div>
         </div>
       </div>
     </div>

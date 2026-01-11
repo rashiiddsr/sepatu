@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
 import { Package, ShoppingCart, Users, DollarSign } from 'lucide-react';
+import { api } from '../../lib/api';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -15,20 +15,8 @@ export default function AdminDashboard() {
   }, []);
 
   const fetchStats = async () => {
-    const [productsRes, ordersRes, usersRes] = await Promise.all([
-      supabase.from('products').select('id', { count: 'exact', head: true }),
-      supabase.from('orders').select('total_amount'),
-      supabase.from('profiles').select('id', { count: 'exact', head: true }),
-    ]);
-
-    const totalRevenue = ordersRes.data?.reduce((sum, order) => sum + order.total_amount, 0) || 0;
-
-    setStats({
-      totalProducts: productsRes.count || 0,
-      totalOrders: ordersRes.data?.length || 0,
-      totalUsers: usersRes.count || 0,
-      totalRevenue,
-    });
+    const data = await api.getAdminSummary();
+    setStats(data);
   };
 
   const statCards = [

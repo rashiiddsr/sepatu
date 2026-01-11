@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
 import type { OrderWithItems } from '../../types/database';
 import { Package, Eye, X } from 'lucide-react';
+import { api } from '../../lib/api';
 
 export default function OrderManagement() {
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
@@ -14,44 +14,32 @@ export default function OrderManagement() {
   }, []);
 
   const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*, order_items(*, products(*))')
-      .order('created_at', { ascending: false });
-
-    if (data) setOrders(data as unknown as OrderWithItems[]);
+    const data = await api.getOrders();
+    setOrders(data as OrderWithItems[]);
   };
 
   const updateOrderStatus = async (
     orderId: string,
     newStatus: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
   ) => {
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', orderId);
-
-    if (error) {
-      alert('Failed to update order status');
-    } else {
+    try {
+      await api.updateOrder({ id: orderId, status: newStatus });
       fetchOrders();
       if (selectedOrder?.id === orderId) {
         setSelectedOrder({ ...selectedOrder, status: newStatus });
       }
+    } catch (error) {
+      alert('Failed to update order status');
     }
   };
 
   const updateTrackingNumber = async (orderId: string, trackingNumber: string) => {
-    const { error } = await supabase
-      .from('orders')
-      .update({ tracking_number: trackingNumber })
-      .eq('id', orderId);
-
-    if (error) {
-      alert('Failed to update tracking number');
-    } else {
+    try {
+      await api.updateOrder({ id: orderId, tracking_number: trackingNumber });
       alert('Tracking number updated successfully!');
       fetchOrders();
+    } catch (error) {
+      alert('Failed to update tracking number');
     }
   };
 
@@ -200,84 +188,46 @@ export default function OrderManagement() {
                 <input
                   type="text"
                   defaultValue={selectedOrder.tracking_number || ''}
+                  placeholder="Enter tracking number"
                   onBlur={(e) => {
                     if (e.target.value !== selectedOrder.tracking_number) {
                       updateTrackingNumber(selectedOrder.id, e.target.value);
                     }
                   }}
-                  placeholder="Enter tracking number"
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                 />
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-slate-900 mb-3">Shipping Address</h3>
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <p className="text-slate-900">{selectedOrder.shipping_address}</p>
-                  <p className="text-slate-900 mt-1">
-                    {selectedOrder.shipping_city}, {selectedOrder.shipping_postal_code}
-                  </p>
-                  <p className="text-slate-600 text-sm mt-2">
-                    Shipping Method: {selectedOrder.shipping_method}
-                  </p>
-                </div>
               </div>
 
               <div>
                 <h3 className="font-semibold text-slate-900 mb-3">Order Items</h3>
                 <div className="space-y-3">
                   {selectedOrder.order_items.map((item) => (
-                    <div key={item.id} className="flex items-center space-x-4 bg-slate-50 rounded-lg p-4">
-                      <img
-                        src={item.products?.image_url || 'https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&w=100'}
-                        alt={item.products?.name}
-                        className="w-16 h-16 object-cover rounded-lg"
-                      />
-                      <div className="flex-1">
+                    <div key={item.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-lg">
+                      <div>
                         <p className="font-medium text-slate-900">{item.products?.name}</p>
                         <p className="text-sm text-slate-600">
-                          Quantity: {item.quantity} | Size: {item.size} | Color: {item.color}
+                          Size: {item.size} | Color: {item.color}
                         </p>
                       </div>
-                      <span className="font-medium text-slate-900">
-                        Rp {(item.price * item.quantity).toLocaleString('id-ID')}
-                      </span>
+                      <div className="text-right">
+                        <p className="font-medium text-slate-900">Qty: {item.quantity}</p>
+                        <p className="text-sm text-slate-600">
+                          Rp {(item.price * item.quantity).toLocaleString('id-ID')}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="bg-slate-50 rounded-lg p-4">
-                <div className="flex justify-between mb-2">
-                  <span className="text-slate-600">Subtotal</span>
-                  <span className="text-slate-900">
-                    Rp {(selectedOrder.total_amount - selectedOrder.shipping_cost).toLocaleString('id-ID')}
+              <div className="border-t border-slate-200 pt-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-semibold text-slate-900">Total Amount</span>
+                  <span className="text-xl font-bold text-slate-900">
+                    Rp {selectedOrder.total_amount.toLocaleString('id-ID')}
                   </span>
-                </div>
-                <div className="flex justify-between mb-2">
-                  <span className="text-slate-600">Shipping Cost</span>
-                  <span className="text-slate-900">
-                    Rp {selectedOrder.shipping_cost.toLocaleString('id-ID')}
-                  </span>
-                </div>
-                <div className="border-t border-slate-200 pt-2 mt-2">
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-slate-900">Total</span>
-                    <span className="font-bold text-slate-900 text-lg">
-                      Rp {selectedOrder.total_amount.toLocaleString('id-ID')}
-                    </span>
-                  </div>
                 </div>
               </div>
-
-              {selectedOrder.notes && (
-                <div>
-                  <h3 className="font-semibold text-slate-900 mb-3">Customer Notes</h3>
-                  <div className="bg-slate-50 rounded-lg p-4">
-                    <p className="text-slate-700">{selectedOrder.notes}</p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
