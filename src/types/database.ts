@@ -25,6 +25,12 @@ export interface Category {
   created_at: string;
 }
 
+export interface Tag {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -90,6 +96,8 @@ export interface OrderItem {
 export interface ProductWithDetails extends Product {
   brands?: Brand | null;
   categories?: Category | null;
+  tags?: Tag[];
+  tag_ids?: string[];
 }
 
 export interface CartItemWithProduct extends CartItem {

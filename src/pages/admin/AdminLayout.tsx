@@ -1,6 +1,16 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { LayoutDashboard, Package, Users, ShoppingCart, BarChart3, LogOut } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Package,
+  Users,
+  ShoppingCart,
+  BarChart3,
+  LogOut,
+  Tag,
+  Layers,
+  Store,
+} from 'lucide-react';
 import { useEffect } from 'react';
 
 export default function AdminLayout() {
@@ -22,6 +32,9 @@ export default function AdminLayout() {
   const navItems = [
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/products', icon: Package, label: 'Products' },
+    { path: '/admin/brands', icon: Store, label: 'Brands' },
+    { path: '/admin/categories', icon: Layers, label: 'Categories' },
+    { path: '/admin/tags', icon: Tag, label: 'Tags' },
     { path: '/admin/orders', icon: ShoppingCart, label: 'Orders' },
     { path: '/admin/users', icon: Users, label: 'Users' },
     { path: '/admin/reports', icon: BarChart3, label: 'Reports' },

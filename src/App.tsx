@@ -17,6 +17,9 @@ import ProductManagement from './pages/admin/ProductManagement';
 import UserManagement from './pages/admin/UserManagement';
 import OrderManagement from './pages/admin/OrderManagement';
 import Reports from './pages/admin/Reports';
+import BrandManagement from './pages/admin/BrandManagement';
+import CategoryManagement from './pages/admin/CategoryManagement';
+import TagManagement from './pages/admin/TagManagement';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -102,6 +105,9 @@ function App() {
             >
               <Route index element={<AdminDashboard />} />
               <Route path="products" element={<ProductManagement />} />
+              <Route path="brands" element={<BrandManagement />} />
+              <Route path="categories" element={<CategoryManagement />} />
+              <Route path="tags" element={<TagManagement />} />
               <Route path="users" element={<UserManagement />} />
               <Route path="orders" element={<OrderManagement />} />
               <Route path="reports" element={<Reports />} />

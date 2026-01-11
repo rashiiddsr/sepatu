@@ -1,14 +1,15 @@
 import { useState, useEffect, FormEvent } from 'react';
-import type { Product, Brand, Category } from '../../types/database';
+import type { ProductWithDetails, Brand, Category, Tag } from '../../types/database';
 import { Plus, Edit2, Trash2, X } from 'lucide-react';
 import { api } from '../../lib/api';
 
 export default function ProductManagement() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductWithDetails[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<ProductWithDetails | null>(null);
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -16,6 +17,7 @@ export default function ProductManagement() {
     description: '',
     brand_id: '',
     category_id: '',
+    tag_ids: [] as string[],
     price: 0,
     stock: 0,
     sizes: '38,39,40,41,42,43,44',
@@ -29,15 +31,17 @@ export default function ProductManagement() {
   }, []);
 
   const fetchData = async () => {
-    const [productsData, brandsData, categoriesData] = await Promise.all([
+    const [productsData, brandsData, categoriesData, tagsData] = await Promise.all([
       api.getProducts(),
       api.getBrands(),
       api.getCategories(),
+      api.getTags(),
     ]);
 
     setProducts(productsData);
     setBrands(brandsData);
     setCategories(categoriesData);
+    setTags(tagsData);
   };
 
   const openCreateModal = () => {
@@ -47,6 +51,7 @@ export default function ProductManagement() {
       description: '',
       brand_id: '',
       category_id: '',
+      tag_ids: [],
       price: 0,
       stock: 0,
       sizes: '38,39,40,41,42,43,44',
@@ -57,13 +62,14 @@ export default function ProductManagement() {
     setShowModal(true);
   };
 
-  const openEditModal = (product: Product) => {
+  const openEditModal = (product: ProductWithDetails) => {
     setEditingProduct(product);
     setFormData({
       name: product.name,
       description: product.description || '',
       brand_id: product.brand_id || '',
       category_id: product.category_id || '',
+      tag_ids: product.tags?.map((tag) => tag.id) || [],
       price: product.price,
       stock: product.stock,
       sizes: product.sizes.join(','),
@@ -83,6 +89,7 @@ export default function ProductManagement() {
       description: formData.description,
       brand_id: formData.brand_id || null,
       category_id: formData.category_id || null,
+      tag_ids: formData.tag_ids,
       price: formData.price,
       stock: formData.stock,
       sizes: formData.sizes.split(',').map(s => s.trim()).filter(Boolean),
@@ -245,7 +252,9 @@ export default function ProductManagement() {
                     onChange={(e) => setFormData({ ...formData, brand_id: e.target.value })}
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                   >
-                    <option value="">Select Brand</option>
+                    <option value="" disabled>
+                      Select Brand
+                    </option>
                     {brands.map((brand) => (
                       <option key={brand.id} value={brand.id}>{brand.name}</option>
                     ))}
@@ -258,11 +267,46 @@ export default function ProductManagement() {
                     onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
                     className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                   >
-                    <option value="">Select Category</option>
+                    <option value="" disabled>
+                      Select Category
+                    </option>
                     {categories.map((category) => (
                       <option key={category.id} value={category.id}>{category.name}</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Tags</label>
+                <div className="flex flex-wrap gap-2">
+                  {tags.map((tag) => {
+                    const checked = formData.tag_ids.includes(tag.id);
+                    return (
+                      <label
+                        key={tag.id}
+                        className={`flex items-center space-x-2 px-3 py-2 border rounded-full text-sm cursor-pointer ${
+                          checked ? 'border-slate-900 text-slate-900' : 'border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const next = checked
+                              ? formData.tag_ids.filter((id) => id !== tag.id)
+                              : [...formData.tag_ids, tag.id];
+                            setFormData({ ...formData, tag_ids: next });
+                          }}
+                          className="text-slate-900 focus:ring-slate-900"
+                        />
+                        <span>{tag.name}</span>
+                      </label>
+                    );
+                  })}
+                  {tags.length === 0 && (
+                    <p className="text-sm text-slate-500">No tags available. Add tags in admin first.</p>
+                  )}
                 </div>
               </div>
 

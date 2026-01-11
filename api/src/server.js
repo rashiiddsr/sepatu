@@ -81,6 +81,7 @@ const mapProductRow = (row) => {
     is_featured: Boolean(row.product_is_featured),
     created_at: row.product_created_at,
     updated_at: row.product_updated_at,
+    tags: [],
     brands: row.brand_id
       ? {
           id: row.brand_id,
@@ -100,6 +101,15 @@ const mapProductRow = (row) => {
       : null,
   };
 };
+
+const mapTagRow = (row) =>
+  row
+    ? {
+        id: row.tag_id,
+        name: row.tag_name,
+        created_at: row.tag_created_at,
+      }
+    : null;
 
 const mapProfileRow = (row) =>
   row
@@ -280,6 +290,11 @@ router.get('/categories', async (_req, res) => {
   ok(res, rows);
 });
 
+router.get('/tags', async (_req, res) => {
+  const [rows] = await query('SELECT id, name, created_at FROM tags');
+  ok(res, rows);
+});
+
 router.get('/products', async (req, res) => {
   const { id } = req.query;
   const productSql = `SELECT
@@ -311,11 +326,48 @@ router.get('/products', async (req, res) => {
     LEFT JOIN categories c ON p.category_id = c.id`;
   if (id) {
     const [rows] = await query(`${productSql} WHERE p.id = ?`, [id]);
-    ok(res, rows.length ? mapProductRow(rows[0]) : null);
+    const product = rows.length ? mapProductRow(rows[0]) : null;
+    if (!product) {
+      ok(res, null);
+      return;
+    }
+    const [tagRows] = await query(
+      `SELECT pt.product_id, t.id AS tag_id, t.name AS tag_name, t.created_at AS tag_created_at
+       FROM product_tags pt
+       JOIN tags t ON pt.tag_id = t.id
+       WHERE pt.product_id = ?`,
+      [product.id]
+    );
+    product.tags = tagRows.map((row) => mapTagRow(row)).filter(Boolean);
+    ok(res, product);
     return;
   }
   const [rows] = await query(productSql);
-  ok(res, rows.map((row) => mapProductRow(row)));
+  const products = rows.map((row) => mapProductRow(row));
+  const productIds = products.map((product) => product.id);
+  if (productIds.length > 0) {
+    const [tagRows] = await query(
+      `SELECT pt.product_id, t.id AS tag_id, t.name AS tag_name, t.created_at AS tag_created_at
+       FROM product_tags pt
+       JOIN tags t ON pt.tag_id = t.id
+       WHERE pt.product_id IN (?)`,
+      [productIds]
+    );
+    const tagsByProduct = new Map();
+    tagRows.forEach((row) => {
+      const tag = mapTagRow(row);
+      if (!tag) {
+        return;
+      }
+      const list = tagsByProduct.get(row.product_id) || [];
+      list.push(tag);
+      tagsByProduct.set(row.product_id, list);
+    });
+    products.forEach((product) => {
+      product.tags = tagsByProduct.get(product.id) || [];
+    });
+  }
+  ok(res, products);
 });
 
 router.post('/products', async (req, res) => {
@@ -325,25 +377,31 @@ router.post('/products', async (req, res) => {
     return;
   }
   const productId = randomUUID();
-  await query(
-    `INSERT INTO products
-      (id, name, description, brand_id, category_id, price, stock, sizes, colors, image_url, images, is_featured)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      productId,
-      payload.name,
-      payload.description || null,
-      payload.brand_id || null,
-      payload.category_id || null,
-      payload.price,
-      payload.stock ?? 0,
-      JSON.stringify(Array.isArray(payload.sizes) ? payload.sizes : []),
-      JSON.stringify(Array.isArray(payload.colors) ? payload.colors : []),
-      payload.image_url || null,
-      JSON.stringify(Array.isArray(payload.images) ? payload.images : []),
-      payload.is_featured ? 1 : 0,
-    ]
-  );
+  await withTransaction(async (connection) => {
+    await connection.query(
+      `INSERT INTO products
+        (id, name, description, brand_id, category_id, price, stock, sizes, colors, image_url, images, is_featured)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        productId,
+        payload.name,
+        payload.description || null,
+        payload.brand_id || null,
+        payload.category_id || null,
+        payload.price,
+        payload.stock ?? 0,
+        JSON.stringify(Array.isArray(payload.sizes) ? payload.sizes : []),
+        JSON.stringify(Array.isArray(payload.colors) ? payload.colors : []),
+        payload.image_url || null,
+        JSON.stringify(Array.isArray(payload.images) ? payload.images : []),
+        payload.is_featured ? 1 : 0,
+      ]
+    );
+    if (Array.isArray(payload.tag_ids) && payload.tag_ids.length > 0) {
+      const values = payload.tag_ids.map((tagId) => [productId, tagId]);
+      await connection.query('INSERT INTO product_tags (product_id, tag_id) VALUES ?', [values]);
+    }
+  });
   ok(res, { id: productId });
 });
 
@@ -375,19 +433,37 @@ router.put('/products', async (req, res) => {
     addUpdate('images', JSON.stringify(Array.isArray(payload.images) ? payload.images : []));
   if (payload.is_featured !== undefined) addUpdate('is_featured', payload.is_featured ? 1 : 0);
 
-  if (updates.length === 0) {
+  if (updates.length === 0 && !Array.isArray(payload.tag_ids)) {
     ok(res, true);
     return;
   }
 
-  const [result] = await query(
-    `UPDATE products SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
-    [...values, payload.id]
-  );
+  if (updates.length > 0) {
+    const [result] = await query(
+      `UPDATE products SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
+      [...values, payload.id]
+    );
 
-  if (result.affectedRows === 0) {
-    fail(res, 404, 'Product not found');
-    return;
+    if (result.affectedRows === 0) {
+      fail(res, 404, 'Product not found');
+      return;
+    }
+  }
+  if (Array.isArray(payload.tag_ids)) {
+    if (updates.length === 0) {
+      const [rows] = await query('SELECT id FROM products WHERE id = ?', [payload.id]);
+      if (rows.length === 0) {
+        fail(res, 404, 'Product not found');
+        return;
+      }
+    }
+    await withTransaction(async (connection) => {
+      await connection.query('DELETE FROM product_tags WHERE product_id = ?', [payload.id]);
+      if (payload.tag_ids.length > 0) {
+        const values = payload.tag_ids.map((tagId) => [payload.id, tagId]);
+        await connection.query('INSERT INTO product_tags (product_id, tag_id) VALUES ?', [values]);
+      }
+    });
   }
   ok(res, true);
 });
@@ -778,6 +854,187 @@ router.put('/orders', requireAuth, requireAdmin, async (req, res) => {
   );
   if (result.affectedRows === 0) {
     fail(res, 404, 'Order not found');
+    return;
+  }
+  ok(res, true);
+});
+
+router.get('/admin/brands', requireAuth, requireAdmin, async (_req, res) => {
+  const [rows] = await query('SELECT id, name, description, logo_url, created_at FROM brands');
+  ok(res, rows);
+});
+
+router.post('/admin/brands', requireAuth, requireAdmin, async (req, res) => {
+  const { name, description, logo_url } = req.body || {};
+  if (!name) {
+    fail(res, 400, 'Brand name is required');
+    return;
+  }
+  const id = randomUUID();
+  await query(
+    'INSERT INTO brands (id, name, description, logo_url) VALUES (?, ?, ?, ?)',
+    [id, name, description || null, logo_url || null]
+  );
+  ok(res, { id });
+});
+
+router.put('/admin/brands', requireAuth, requireAdmin, async (req, res) => {
+  const { id, name, description, logo_url } = req.body || {};
+  if (!id) {
+    fail(res, 400, 'Brand id is required');
+    return;
+  }
+  const updates = [];
+  const values = [];
+  if (name !== undefined) {
+    updates.push('name = ?');
+    values.push(name);
+  }
+  if (description !== undefined) {
+    updates.push('description = ?');
+    values.push(description);
+  }
+  if (logo_url !== undefined) {
+    updates.push('logo_url = ?');
+    values.push(logo_url);
+  }
+  if (updates.length === 0) {
+    ok(res, true);
+    return;
+  }
+  const [result] = await query(
+    `UPDATE brands SET ${updates.join(', ')} WHERE id = ?`,
+    [...values, id]
+  );
+  if (result.affectedRows === 0) {
+    fail(res, 404, 'Brand not found');
+    return;
+  }
+  ok(res, true);
+});
+
+router.delete('/admin/brands', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.body || {};
+  if (!id) {
+    fail(res, 400, 'Brand id is required');
+    return;
+  }
+  const [result] = await query('DELETE FROM brands WHERE id = ?', [id]);
+  if (result.affectedRows === 0) {
+    fail(res, 404, 'Brand not found');
+    return;
+  }
+  ok(res, true);
+});
+
+router.get('/admin/categories', requireAuth, requireAdmin, async (_req, res) => {
+  const [rows] = await query('SELECT id, name, description, created_at FROM categories');
+  ok(res, rows);
+});
+
+router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
+  const { name, description } = req.body || {};
+  if (!name) {
+    fail(res, 400, 'Category name is required');
+    return;
+  }
+  const id = randomUUID();
+  await query('INSERT INTO categories (id, name, description) VALUES (?, ?, ?)', [
+    id,
+    name,
+    description || null,
+  ]);
+  ok(res, { id });
+});
+
+router.put('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
+  const { id, name, description } = req.body || {};
+  if (!id) {
+    fail(res, 400, 'Category id is required');
+    return;
+  }
+  const updates = [];
+  const values = [];
+  if (name !== undefined) {
+    updates.push('name = ?');
+    values.push(name);
+  }
+  if (description !== undefined) {
+    updates.push('description = ?');
+    values.push(description);
+  }
+  if (updates.length === 0) {
+    ok(res, true);
+    return;
+  }
+  const [result] = await query(
+    `UPDATE categories SET ${updates.join(', ')} WHERE id = ?`,
+    [...values, id]
+  );
+  if (result.affectedRows === 0) {
+    fail(res, 404, 'Category not found');
+    return;
+  }
+  ok(res, true);
+});
+
+router.delete('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.body || {};
+  if (!id) {
+    fail(res, 400, 'Category id is required');
+    return;
+  }
+  const [result] = await query('DELETE FROM categories WHERE id = ?', [id]);
+  if (result.affectedRows === 0) {
+    fail(res, 404, 'Category not found');
+    return;
+  }
+  ok(res, true);
+});
+
+router.get('/admin/tags', requireAuth, requireAdmin, async (_req, res) => {
+  const [rows] = await query('SELECT id, name, created_at FROM tags');
+  ok(res, rows);
+});
+
+router.post('/admin/tags', requireAuth, requireAdmin, async (req, res) => {
+  const { name } = req.body || {};
+  if (!name) {
+    fail(res, 400, 'Tag name is required');
+    return;
+  }
+  const id = randomUUID();
+  await query('INSERT INTO tags (id, name) VALUES (?, ?)', [id, name]);
+  ok(res, { id });
+});
+
+router.put('/admin/tags', requireAuth, requireAdmin, async (req, res) => {
+  const { id, name } = req.body || {};
+  if (!id) {
+    fail(res, 400, 'Tag id is required');
+    return;
+  }
+  if (name === undefined) {
+    ok(res, true);
+    return;
+  }
+  const [result] = await query('UPDATE tags SET name = ? WHERE id = ?', [name, id]);
+  if (result.affectedRows === 0) {
+    fail(res, 404, 'Tag not found');
+    return;
+  }
+  ok(res, true);
+});
+
+router.delete('/admin/tags', requireAuth, requireAdmin, async (req, res) => {
+  const { id } = req.body || {};
+  if (!id) {
+    fail(res, 400, 'Tag id is required');
+    return;
+  }
+  const [result] = await query('DELETE FROM tags WHERE id = ?', [id]);
+  if (result.affectedRows === 0) {
+    fail(res, 404, 'Tag not found');
     return;
   }
   ok(res, true);
