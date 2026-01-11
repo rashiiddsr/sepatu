@@ -92,7 +92,7 @@ Solemates adalah sistem informasi e-commerce lengkap untuk penjualan sepatu onli
      ```
 
 4. **Jalankan Development Server (port 5173)**
-   - Buat file `.env` di root untuk Vite:
+   - Pastikan file `.env` di root berisi:
      ```bash
      VITE_API_URL=http://localhost:4000/api
      ```
