@@ -6,7 +6,7 @@ interface AuthContextType {
   user: AuthUser | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<{ user: AuthUser; profile: Profile }>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
   isAdmin: () => boolean;
@@ -50,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const session = await api.signIn(email, password);
     setUser(session.user);
     setProfile(session.profile);
+    return session;
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {

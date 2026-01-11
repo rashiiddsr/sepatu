@@ -1,10 +1,12 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { ShoppingCart, User, Heart, LogOut, LayoutDashboard, Menu, X } from 'lucide-react';
+import { useShop } from '../contexts/ShopContext';
+import { ShoppingCart, User, Heart, LogOut, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 
 export default function Navbar() {
-  const { user, profile, signOut, isAdmin } = useAuth();
+  const { user, signOut } = useAuth();
+  const { cartCount, wishlistCount } = useShop();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -43,33 +45,33 @@ export default function Navbar() {
               <>
                 <Link
                   to="/cart"
-                  className="p-2 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+                  className="relative p-2 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
                 >
                   <ShoppingCart className="w-5 h-5" />
+                  {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                      {cartCount}
+                    </span>
+                  )}
                 </Link>
                 <Link
                   to="/wishlist"
-                  className="p-2 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
+                  className="relative p-2 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
                 >
                   <Heart className="w-5 h-5" />
+                  {wishlistCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-xs flex items-center justify-center">
+                      {wishlistCount}
+                    </span>
+                  )}
                 </Link>
-                {isAdmin() ? (
-                  <Link
-                    to="/admin"
-                    className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition flex items-center space-x-2"
-                  >
-                    <LayoutDashboard className="w-4 h-4" />
-                    <span>Admin</span>
-                  </Link>
-                ) : (
-                  <Link
-                    to="/dashboard"
-                    className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition flex items-center space-x-2"
-                  >
-                    <User className="w-4 h-4" />
-                    <span>Dashboard</span>
-                  </Link>
-                )}
+                <Link
+                  to="/dashboard"
+                  className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition flex items-center space-x-2"
+                >
+                  <User className="w-4 h-4" />
+                  <span>Dashboard</span>
+                </Link>
                 <button
                   onClick={handleSignOut}
                   className="p-2 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition"
@@ -125,35 +127,35 @@ export default function Navbar() {
               <>
                 <Link
                   to="/cart"
-                  className="block text-slate-700 hover:text-slate-900 font-medium py-2"
+                  className="flex items-center justify-between text-slate-700 hover:text-slate-900 font-medium py-2"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  Cart
+                  <span>Cart</span>
+                  {cartCount > 0 && (
+                    <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
+                      {cartCount}
+                    </span>
+                  )}
                 </Link>
                 <Link
                   to="/wishlist"
+                  className="flex items-center justify-between text-slate-700 hover:text-slate-900 font-medium py-2"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <span>Wishlist</span>
+                  {wishlistCount > 0 && (
+                    <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-xs flex items-center justify-center">
+                      {wishlistCount}
+                    </span>
+                  )}
+                </Link>
+                <Link
+                  to="/dashboard"
                   className="block text-slate-700 hover:text-slate-900 font-medium py-2"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  Wishlist
+                  My Dashboard
                 </Link>
-                {isAdmin() ? (
-                  <Link
-                    to="/admin"
-                    className="block text-slate-700 hover:text-slate-900 font-medium py-2"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Admin Dashboard
-                  </Link>
-                ) : (
-                  <Link
-                    to="/dashboard"
-                    className="block text-slate-700 hover:text-slate-900 font-medium py-2"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    My Dashboard
-                  </Link>
-                )}
                 <button
                   onClick={() => {
                     handleSignOut();
