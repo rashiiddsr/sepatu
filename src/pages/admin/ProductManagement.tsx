@@ -11,6 +11,7 @@ export default function ProductManagement() {
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductWithDetails | null>(null);
   const [loading, setLoading] = useState(false);
+  const [imageUpload, setImageUpload] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -23,7 +24,6 @@ export default function ProductManagement() {
     sizes: '38,39,40,41,42,43,44',
     colors: 'Black,White',
     image_url: '',
-    is_featured: false,
   });
 
   useEffect(() => {
@@ -57,12 +57,14 @@ export default function ProductManagement() {
       sizes: '38,39,40,41,42,43,44',
       colors: 'Black,White',
       image_url: '',
-      is_featured: false,
     });
+    setImageUpload(null);
     setShowModal(true);
   };
 
   const openEditModal = (product: ProductWithDetails) => {
+    const imageUrl = product.image_url || '';
+    const isUploadImage = imageUrl.startsWith('data:');
     setEditingProduct(product);
     setFormData({
       name: product.name,
@@ -74,15 +76,16 @@ export default function ProductManagement() {
       stock: product.stock,
       sizes: product.sizes.join(','),
       colors: product.colors.join(','),
-      image_url: product.image_url || '',
-      is_featured: product.is_featured,
+      image_url: isUploadImage ? '' : imageUrl,
     });
+    setImageUpload(isUploadImage ? imageUrl : null);
     setShowModal(true);
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const finalImageUrl = imageUpload || formData.image_url || null;
 
     const productData = {
       name: formData.name,
@@ -94,8 +97,8 @@ export default function ProductManagement() {
       stock: formData.stock,
       sizes: formData.sizes.split(',').map(s => s.trim()).filter(Boolean),
       colors: formData.colors.split(',').map(c => c.trim()).filter(Boolean),
-      image_url: formData.image_url,
-      is_featured: formData.is_featured,
+      image_url: finalImageUrl,
+      images: imageUpload ? [imageUpload] : undefined,
     };
 
     try {
@@ -147,7 +150,7 @@ export default function ProductManagement() {
                 <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Product</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Price</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Stock</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Featured</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Tags</th>
                 <th className="px-6 py-4 text-right text-sm font-semibold text-slate-900">Actions</th>
               </tr>
             </thead>
@@ -178,11 +181,20 @@ export default function ProductManagement() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    {product.is_featured && (
-                      <span className="px-2 py-1 bg-slate-900 text-white text-xs rounded-full">
-                        Featured
-                      </span>
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {product.tags && product.tags.length > 0 ? (
+                        product.tags.map((tag) => (
+                          <span
+                            key={tag.id}
+                            className="px-2 py-1 bg-slate-100 text-slate-700 text-xs rounded-full"
+                          >
+                            {tag.name}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-400">No tags</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end space-x-2">
@@ -357,24 +369,60 @@ export default function ProductManagement() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Image URL</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Image Link
+                </label>
                 <input
                   type="url"
                   value={formData.image_url}
-                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, image_url: e.target.value });
+                    if (e.target.value) {
+                      setImageUpload(null);
+                    }
+                  }}
                   className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                  placeholder="https://"
                 />
               </div>
 
-              <div className="flex items-center space-x-2">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Upload Image
+                </label>
                 <input
-                  type="checkbox"
-                  checked={formData.is_featured}
-                  onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
-                  className="text-slate-900 focus:ring-slate-900"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) {
+                      setImageUpload(null);
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setImageUpload(reader.result as string);
+                      setFormData((prev) => ({ ...prev, image_url: '' }));
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  className="w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
                 />
-                <label className="text-sm font-medium text-slate-700">Featured Product</label>
+                <p className="text-xs text-slate-500 mt-2">
+                  Anda bisa menggunakan link atau upload gambar langsung.
+                </p>
               </div>
+
+              {(imageUpload || formData.image_url) && (
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <p className="text-sm font-medium text-slate-700 mb-3">Preview</p>
+                  <img
+                    src={imageUpload || formData.image_url}
+                    alt="Preview"
+                    className="w-full h-48 object-cover rounded-lg"
+                  />
+                </div>
+              )}
 
               <div className="flex justify-end space-x-3 pt-4">
                 <button

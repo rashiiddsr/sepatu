@@ -21,18 +21,21 @@ const createSeedData = () => {
       {
         id: superAdminUserId,
         email: 'superadmin@gmail.com',
+        username: 'superadmin',
         password: 'superadmin',
         profile_id: superAdminProfileId,
       },
       {
         id: adminUserId,
         email: 'admin@solemates.local',
+        username: 'adminsolemates',
         password: 'admin123',
         profile_id: adminProfileId,
       },
       {
         id: customerUserId,
         email: 'customer@solemates.local',
+        username: 'customer',
         password: 'customer123',
         profile_id: customerProfileId,
       },

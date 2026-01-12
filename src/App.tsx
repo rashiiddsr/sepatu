@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ShopProvider } from './contexts/ShopContext';
 import Navbar from './components/Navbar';
@@ -52,14 +52,14 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return isAdmin() ? <>{children}</> : <Navigate to="/admin/login" />;
 }
 
-function App() {
+function AppShell() {
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith('/admin');
+
   return (
-    <Router>
-      <AuthProvider>
-        <ShopProvider>
-          <div className="min-h-screen bg-slate-50">
-            <Navbar />
-            <Routes>
+    <div className="min-h-screen bg-slate-50">
+      {!isAdminRoute && <Navbar />}
+      <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/products" element={<Products />} />
               <Route path="/products/:id" element={<ProductDetail />} />
@@ -117,8 +117,17 @@ function App() {
                 <Route path="orders" element={<OrderManagement />} />
                 <Route path="reports" element={<Reports />} />
               </Route>
-            </Routes>
-          </div>
+      </Routes>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        <ShopProvider>
+          <AppShell />
         </ShopProvider>
       </AuthProvider>
     </Router>

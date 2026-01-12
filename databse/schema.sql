@@ -4,6 +4,7 @@ USE solemates;
 CREATE TABLE IF NOT EXISTS users (
   id CHAR(36) PRIMARY KEY,
   email VARCHAR(255) NOT NULL UNIQUE,
+  username VARCHAR(80) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -124,9 +125,9 @@ CREATE TABLE IF NOT EXISTS order_items (
   CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT IGNORE INTO users (id, email, password_hash) VALUES
-  ('s1111111-1111-1111-1111-111111111111', 'superadmin@gmail.com', 'superadmin'),
-  ('a1111111-1111-1111-1111-111111111111', 'admin@solemates.local', 'admin123');
+INSERT IGNORE INTO users (id, email, username, password_hash) VALUES
+  ('s1111111-1111-1111-1111-111111111111', 'superadmin@gmail.com', 'superadmin', 'superadmin'),
+  ('a1111111-1111-1111-1111-111111111111', 'admin@solemates.local', 'adminsolemates', 'admin123');
 
 INSERT IGNORE INTO profiles (id, full_name, role) VALUES
   ('s1111111-1111-1111-1111-111111111111', 'Superadmin', 'super_admin'),

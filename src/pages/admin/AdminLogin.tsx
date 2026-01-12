@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 export default function AdminLogin() {
   const { signIn, signOut, isAdmin, user } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,7 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      const session = await signIn(email, password);
+      const session = await signIn(identifier, password);
       if (session.profile.role !== 'admin' && session.profile.role !== 'super_admin') {
         await signOut();
         setError('Akun ini tidak memiliki akses admin.');
@@ -57,14 +57,16 @@ export default function AdminLogin() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Email atau Username
+              </label>
               <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                type="text"
+                value={identifier}
+                onChange={(event) => setIdentifier(event.target.value)}
                 required
                 className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
-                placeholder="admin@domain.com"
+                placeholder="admin@domain.com atau username"
               />
             </div>
 
