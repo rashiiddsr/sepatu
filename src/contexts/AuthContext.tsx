@@ -6,8 +6,8 @@ interface AuthContextType {
   user: AuthUser | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ user: AuthUser; profile: Profile }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  signIn: (identifier: string, password: string) => Promise<{ user: AuthUser; profile: Profile }>;
+  signUp: (email: string, password: string, fullName: string, username: string) => Promise<void>;
   signOut: () => Promise<void>;
   isAdmin: () => boolean;
   refreshProfile: () => Promise<void>;
@@ -46,15 +46,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const signIn = async (email: string, password: string) => {
-    const session = await api.signIn(email, password);
+  const signIn = async (identifier: string, password: string) => {
+    const session = await api.signIn(identifier, password);
     setUser(session.user);
     setProfile(session.profile);
     return session;
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
-    const session = await api.signUp(email, password, fullName);
+  const signUp = async (email: string, password: string, fullName: string, username: string) => {
+    const session = await api.signUp(email, password, fullName, username);
     setUser(session.user);
     setProfile(session.profile);
   };

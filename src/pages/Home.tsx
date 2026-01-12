@@ -31,7 +31,7 @@ export default function Home() {
     }
   };
 
-  const featuredProducts = products.filter((product) => product.is_featured).slice(0, 6);
+  const featuredProducts = products.slice(0, 6);
 
   const addToWishlist = async (productId: string) => {
     if (!user) {
@@ -177,7 +177,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-3xl font-bold text-slate-900">Featured Picks</h2>
+              <h2 className="text-3xl font-bold text-slate-900">Produk Pilihan</h2>
               <p className="text-slate-600">Kurasi khusus untuk gaya harian dan sport.</p>
             </div>
             <Link to="/products" className="text-slate-900 font-semibold hover:underline">
@@ -213,6 +213,18 @@ export default function Home() {
                   </div>
                   <div className="p-6">
                     <p className="text-sm text-slate-500">{product.brands?.name}</p>
+                    {product.tags && product.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {product.tags.map((tag) => (
+                          <span
+                            key={tag.id}
+                            className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-1 rounded-full"
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <Link to={`/products/${product.id}`} className="block">
                       <h3 className="text-lg font-semibold text-slate-900 mt-2">
                         {product.name}

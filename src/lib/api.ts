@@ -12,6 +12,7 @@ import type {
 export interface AuthUser {
   id: string;
   email: string;
+  username: string;
 }
 
 interface AuthSession {
@@ -43,15 +44,15 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 
 export const api = {
   getSession: () => apiFetch<AuthSession | null>('/auth/session'),
-  signIn: (email: string, password: string) =>
+  signIn: (identifier: string, password: string) =>
     apiFetch<AuthSession>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ identifier, password }),
     }),
-  signUp: (email: string, password: string, fullName: string) =>
+  signUp: (email: string, password: string, fullName: string, username: string) =>
     apiFetch<AuthSession>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password, full_name: fullName }),
+      body: JSON.stringify({ email, password, full_name: fullName, username }),
     }),
   signOut: () => apiFetch<{ message: string }>('/auth/logout', { method: 'POST' }),
   getProfile: () => apiFetch<Profile>('/profile'),

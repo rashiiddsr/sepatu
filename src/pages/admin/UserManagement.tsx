@@ -34,6 +34,9 @@ export default function UserManagement() {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">User</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">
+                  Username
+                </th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Role</th>
                 <th className="px-6 py-4 text-right text-sm font-semibold text-slate-900">Actions</th>
               </tr>
@@ -51,6 +54,9 @@ export default function UserManagement() {
                         <p className="text-sm text-slate-600">{user.role}</p>
                       </div>
                     </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm font-medium text-slate-900">{user.username}</span>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${

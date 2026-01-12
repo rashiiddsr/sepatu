@@ -115,6 +115,7 @@ const mapProfileRow = (row) =>
   row
     ? {
         id: row.id,
+        username: row.username,
         full_name: row.full_name,
         phone: row.phone,
         address: row.address,
@@ -150,7 +151,7 @@ router.get('/auth/session', async (req, res) => {
     return;
   }
   const [rows] = await query(
-    `SELECT u.id, u.email, p.full_name, p.phone, p.address, p.city, p.postal_code, p.role,
+    `SELECT u.id, u.email, u.username, p.full_name, p.phone, p.address, p.city, p.postal_code, p.role,
       p.created_at, p.updated_at
      FROM users u
      JOIN profiles p ON p.id = u.id
@@ -163,24 +164,25 @@ router.get('/auth/session', async (req, res) => {
     return;
   }
   ok(res, {
-    user: { id: user.id, email: user.email },
+    user: { id: user.id, email: user.email, username: user.username },
     profile: mapProfileRow(user),
   });
 });
 
 router.post('/auth/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    fail(res, 400, 'Email and password are required');
+  const { identifier, email, username, password } = req.body || {};
+  const loginId = identifier || email || username;
+  if (!loginId || !password) {
+    fail(res, 400, 'Email/username and password are required');
     return;
   }
   const [rows] = await query(
-    `SELECT u.id, u.email, u.password_hash, p.full_name, p.phone, p.address, p.city, p.postal_code,
+    `SELECT u.id, u.email, u.username, u.password_hash, p.full_name, p.phone, p.address, p.city, p.postal_code,
       p.role, p.created_at, p.updated_at
      FROM users u
      JOIN profiles p ON p.id = u.id
-     WHERE LOWER(u.email) = LOWER(?)`,
-    [email]
+     WHERE LOWER(u.email) = LOWER(?) OR LOWER(u.username) = LOWER(?)`,
+    [loginId, loginId]
   );
   const user = rows[0];
   if (!user || user.password_hash !== password) {
@@ -189,28 +191,31 @@ router.post('/auth/login', async (req, res) => {
   }
   req.session.userId = user.id;
   ok(res, {
-    user: { id: user.id, email: user.email },
+    user: { id: user.id, email: user.email, username: user.username },
     profile: mapProfileRow(user),
   });
 });
 
 router.post('/auth/register', async (req, res) => {
-  const { email, password, full_name } = req.body || {};
-  if (!email || !password || !full_name) {
-    fail(res, 400, 'Email, password, and full name are required');
+  const { email, password, full_name, username } = req.body || {};
+  if (!email || !password || !full_name || !username) {
+    fail(res, 400, 'Email, username, password, and full name are required');
     return;
   }
-  const [existing] = await query('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
+  const [existing] = await query(
+    'SELECT id FROM users WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)',
+    [email, username]
+  );
   if (existing.length > 0) {
-    fail(res, 400, 'Email already registered');
+    fail(res, 400, 'Email or username already registered');
     return;
   }
 
   const userId = randomUUID();
   await withTransaction(async (connection) => {
     await connection.query(
-      'INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)',
-      [userId, email, password]
+      'INSERT INTO users (id, email, username, password_hash) VALUES (?, ?, ?, ?)',
+      [userId, email, username, password]
     );
     await connection.query(
       'INSERT INTO profiles (id, full_name, role) VALUES (?, ?, ?)',
@@ -220,9 +225,10 @@ router.post('/auth/register', async (req, res) => {
 
   req.session.userId = userId;
   ok(res, {
-    user: { id: userId, email },
+    user: { id: userId, email, username },
     profile: {
       id: userId,
+      username,
       full_name,
       phone: null,
       address: null,
@@ -243,7 +249,11 @@ router.post('/auth/logout', (req, res) => {
 
 router.get('/profile', requireAuth, async (req, res) => {
   const [rows] = await query(
-    'SELECT id, full_name, phone, address, city, postal_code, role, created_at, updated_at FROM profiles WHERE id = ?',
+    `SELECT p.id, u.username, p.full_name, p.phone, p.address, p.city, p.postal_code, p.role,
+      p.created_at, p.updated_at
+     FROM profiles p
+     JOIN users u ON u.id = p.id
+     WHERE p.id = ?`,
     [req.session.userId]
   );
   const profile = mapProfileRow(rows[0]);
@@ -260,22 +270,46 @@ router.put('/profile', requireAuth, async (req, res) => {
   const updates = fields
     .filter((field) => Object.prototype.hasOwnProperty.call(payload, field))
     .map((field) => ({ field, value: payload[field] }));
+  const username = Object.prototype.hasOwnProperty.call(payload, 'username')
+    ? payload.username
+    : undefined;
 
-  if (updates.length === 0) {
+  if (username !== undefined) {
+    if (!username) {
+      fail(res, 400, 'Username is required');
+      return;
+    }
+    const [existing] = await query(
+      'SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?',
+      [username, req.session.userId]
+    );
+    if (existing.length > 0) {
+      fail(res, 400, 'Username already in use');
+      return;
+    }
+  }
+
+  if (updates.length === 0 && username === undefined) {
     ok(res, true);
     return;
   }
 
+  if (username !== undefined) {
+    await query('UPDATE users SET username = ? WHERE id = ?', [username, req.session.userId]);
+  }
+
   const setClause = updates.map((item) => `${item.field} = ?`).join(', ');
   const values = updates.map((item) => item.value);
-  const [result] = await query(
-    `UPDATE profiles SET ${setClause}, updated_at = NOW() WHERE id = ?`,
-    [...values, req.session.userId]
-  );
+  if (updates.length > 0) {
+    const [result] = await query(
+      `UPDATE profiles SET ${setClause}, updated_at = NOW() WHERE id = ?`,
+      [...values, req.session.userId]
+    );
 
-  if (result.affectedRows === 0) {
-    fail(res, 404, 'Profile not found');
-    return;
+    if (result.affectedRows === 0) {
+      fail(res, 404, 'Profile not found');
+      return;
+    }
   }
   ok(res, true);
 });
@@ -1057,7 +1091,10 @@ router.get('/admin/summary', requireAuth, requireAdmin, async (_req, res) => {
 
 router.get('/admin/users', requireAuth, requireAdmin, async (_req, res) => {
   const [rows] = await query(
-    'SELECT id, full_name, phone, address, city, postal_code, role, created_at, updated_at FROM profiles'
+    `SELECT p.id, u.username, p.full_name, p.phone, p.address, p.city, p.postal_code, p.role,
+      p.created_at, p.updated_at
+     FROM profiles p
+     JOIN users u ON u.id = p.id`
   );
   ok(res, rows);
 });

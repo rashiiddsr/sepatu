@@ -6,7 +6,6 @@ import {
   Users,
   ShoppingCart,
   BarChart3,
-  LogOut,
   Tag,
   Layers,
   Store,
@@ -22,7 +21,7 @@ export default function AdminLayout() {
     if (!isAdmin()) {
       navigate('/');
     }
-  }, [isAdmin]);
+  }, [isAdmin, navigate]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -45,8 +44,36 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="flex">
+    <div className="min-h-screen bg-slate-100">
+      <header className="fixed top-0 left-0 right-0 h-16 bg-slate-900 text-white z-40">
+        <div className="h-full flex items-center justify-between px-6">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center">
+              <LayoutDashboard className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm text-slate-300">Admin Panel</p>
+              <p className="text-lg font-semibold">Solemates Control Center</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <Link
+              to="/"
+              className="px-3 py-2 rounded-lg text-sm font-medium text-slate-200 hover:text-white hover:bg-slate-800 transition"
+            >
+              Lihat Toko
+            </Link>
+            <button
+              onClick={handleSignOut}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white text-slate-900 hover:bg-slate-100 transition"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex pt-16">
         <aside className="w-64 bg-slate-900 text-white min-h-screen fixed left-0 top-16">
           <div className="p-6">
             <h2 className="text-xl font-bold mb-6">Admin Panel</h2>
@@ -70,15 +97,6 @@ export default function AdminLayout() {
                 );
               })}
             </nav>
-          </div>
-          <div className="absolute bottom-0 left-0 right-0 p-6">
-            <button
-              onClick={handleSignOut}
-              className="flex items-center space-x-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white transition w-full"
-            >
-              <LogOut className="w-5 h-5" />
-              <span className="font-medium">Sign Out</span>
-            </button>
           </div>
         </aside>
 

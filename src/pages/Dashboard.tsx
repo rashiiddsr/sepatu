@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'orders' | 'profile'>('orders');
 
   const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
@@ -19,6 +20,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (profile) {
       setFullName(profile.full_name || '');
+      setUsername(profile.username || '');
       setPhone(profile.phone || '');
       setAddress(profile.address || '');
       setCity(profile.city || '');
@@ -44,6 +46,7 @@ export default function Dashboard() {
   const updateProfile = async () => {
     try {
       await api.updateProfile({
+        username,
         full_name: fullName,
         phone,
         address,
@@ -171,6 +174,17 @@ export default function Dashboard() {
                 <h2 className="text-2xl font-bold text-slate-900 mb-6">Profile Settings</h2>
 
                 <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    />
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       Full Name
